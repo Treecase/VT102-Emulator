@@ -1,0 +1,7 @@
+buildfont
+term
+test/
+font/*.pbm
+notes/
+src/obj/
+src/dep/
