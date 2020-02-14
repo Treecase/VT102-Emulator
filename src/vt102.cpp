@@ -5,9 +5,6 @@
  *  VT102 Emulator
  *
  */
-/* TODO:
- *  figure out correct cursor movements (see vttest 8)
- */
 
 #include "vt102.h"
 
@@ -125,7 +122,6 @@ void VT102::interpret_byte(uint8_t ch)
             throw std::runtime_error(
                 "undefined escape sequence `ESC ( "
                 + std::to_string(ch)
-                //+ std::string(1, ch)
                 + "`");
             break;
         }
@@ -289,7 +285,6 @@ void VT102::interpret_byte_control_character(uint8_t ch)
     /* DEL */
     case '\177':
         /* ignored */
-        puts("del");    /* FIXME: TEMP */
         break;
 
 
@@ -881,9 +876,6 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                     else
                     {
                         /* TBC ignores undefined parameters */
-                        //throw std::runtime_error(
-                        //    "TBC received undefined parameter "
-                        //    + cmd->params[0]);
                     }
                     break;
 
@@ -1374,6 +1366,11 @@ void VT102::ins_line(ssize_t y)
 
 void VT102::putc(unsigned char ch)
 {
+    if (DECAWM && curs_y > scroll_bottom)
+    {
+        scroll(scroll_bottom - curs_y);
+    }
+
     if (    0 <= curs_x && curs_x < cols
         &&  0 <= curs_y && curs_y < rows)
     {
@@ -1415,7 +1412,8 @@ void VT102::putc(unsigned char ch)
         {
             if (DECAWM)
             {
-                move_curs(0, curs_y + 1);
+                curs_x = 0;
+                curs_y++;
             }
         }
         else

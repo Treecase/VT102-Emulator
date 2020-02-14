@@ -1,9 +1,16 @@
-/* Copyright (C) 2019 Trevor Last
+/* Copyright (C) 2020 Trevor Last
  * See LICENSE file for copyright and license details.
  * main.cpp
  *
  *  Terminal Emulator
  *
+ */
+/* TODO:
+ *  bold
+ *  auto repeat
+ *  local echo
+ *  SETUP mode
+ *  rc file?
  */
 
 /* for posix_openpt, ptsname, grantpt and unlockpt */
@@ -153,26 +160,48 @@ std::unordered_map<SDL_Keycode, std::array<int, 3>> keymap =\
 
 
 
-SDL_Color normal_colors[2] =\
+int colour_idx = 0;
+SDL_Color colours[2][2] =\
 {
-    /* background */
-    (SDL_Color)
+    /* normal colours */
     {
-        .r =   0,
-        .g =   0,
-        .b =   0,
-        .a = 255
+        /* background */
+        (SDL_Color)
+        {
+            .r =   0,
+            .g =   0,
+            .b =   0,
+            .a = 255
+        },
+        /* foreground */
+        (SDL_Color)
+        {
+            .r = 255,
+            .g = 255,
+            .b = 255,
+            .a = 255
+        }
     },
-    /* foreground */
-    (SDL_Color)
+    /* inverted colours */
     {
-        .r = 255,
-        .g = 255,
-        .b = 255,
-        .a = 255
+        /* background */
+        (SDL_Color)
+        {
+            .r = 255,
+            .g = 255,
+            .b = 255,
+            .a = 255
+        },
+        /* foreground */
+        (SDL_Color)
+        {
+            .r =   0,
+            .g =   0,
+            .b =   0,
+            .a = 255
+        }
     }
 };
-SDL_Color inverted_colors[2] = { normal_colors[1], normal_colors[0] };
 
 
 
@@ -322,13 +351,13 @@ SDL_Surface *image_to_surface(Image in)
 
     if (SDL_SetPaletteColors(
             surf->format->palette,
-            normal_colors,
+            colours[colour_idx],
             0,
             2)
         < 0)
     {
         throw std::runtime_error(
-            "failed to set palette colors "
+            "failed to set palette colours "
             + std::string(SDL_GetError()));
     }
 
@@ -471,8 +500,7 @@ int main (int argc, char *argv[])
         term.rows * fonts[0][0]->h,
         0/*SDL_WINDOW_RESIZABLE*/);
 
-    SDL_Surface *surf = SDL_GetWindowSurface(win);
-    SDL_FillRect(surf, nullptr, SDL_MapRGB(surf->format, 0, 0, 0));
+    SDL_Surface *surf = nullptr;
 
 
     SDL_TimerID blink_timer =\
@@ -480,27 +508,16 @@ int main (int argc, char *argv[])
     SDL_TimerID timer_60hz =\
         SDL_AddTimer(1000 / 60, callback_timer_60hz, nullptr);
 
-    bool blink_off = false,
-         use_132_columns = term.DECCOLM;
-
     SDL_Thread *master_monitor = SDL_CreateThread(
         thread_monitor_master_fd,
         "master_monitor",
         &master);
 
 
-    SDL_EventState(SDL_MOUSEMOTION, 0);
-    SDL_EventState(SDL_MOUSEBUTTONDOWN, 0);
-    SDL_EventState(SDL_MOUSEBUTTONUP, 0);
-    SDL_EventState(SDL_MOUSEWHEEL, 0);
-    SDL_EventState(SDL_CLIPBOARDUPDATE, 0);
-    SDL_EventState(SDL_DROPFILE, 0);
-    SDL_EventState(SDL_DROPTEXT, 0);
-    SDL_EventState(SDL_DROPBEGIN, 0);
-    SDL_EventState(SDL_DROPCOMPLETE, 0);
-    SDL_EventState(SDL_AUDIODEVICEADDED, 0);
-    SDL_EventState(SDL_AUDIODEVICEREMOVED, 0);
-
+    bool blink_off = false,
+         /* !DECCOLM to make sure the window is the
+          * right size before the first render */
+         use_132_columns = !term.DECCOLM;
 
     /* mainloop */
     bool update_screen = true;
@@ -520,19 +537,25 @@ int main (int argc, char *argv[])
                     term.cols * fnt[0]->w,
                     term.rows * fnt[0]->h);
                 surf = SDL_GetWindowSurface(win);
-                SDL_FillRect(
-                    surf,
-                    nullptr,
-                    SDL_MapRGB(surf->format, 0, 0, 0));
             }
 
+
             /* render the screen */
-            SDL_FillRect(
-                surf,
-                nullptr,
-                term.DECSCNM\
-                    ? SDL_MapRGB(surf->format,   0,   0,   0)
-                    : SDL_MapRGB(surf->format, 255, 255, 255));
+            Uint32 foreground = SDL_MapRGB(
+                surf->format,
+                term.DECSCNM? 0 : 255,
+                term.DECSCNM? 0 : 255,
+                term.DECSCNM? 0 : 255);
+            Uint32 background = SDL_MapRGB(
+                surf->format,
+                term.DECSCNM? 255 : 0,
+                term.DECSCNM? 255 : 0,
+                term.DECSCNM? 255 : 0);
+
+            /* clear the screen */
+            SDL_FillRect(surf, nullptr, background);
+            colour_idx = term.DECSCNM? 1 : 0;
+
             for (ssize_t y = 0; y < term.rows; ++y)
             {
                 Line line = term.screen[y];
@@ -558,6 +581,12 @@ int main (int argc, char *argv[])
                     Char ch = term.getc_at(x, y);
                     int fontidx = term.fontidx(ch.charset, ch.ch);
                     SDL_Surface *glyph = font[fontidx];
+
+                    SDL_SetPaletteColors(
+                        glyph->format->palette,
+                        colours[colour_idx],
+                        0,
+                        2);
 
                     /* cursor is a blinking underline or block */
                     if (y == term.curs_y && x == term.curs_x)
@@ -619,16 +648,16 @@ int main (int argc, char *argv[])
                         /* use inverted colours */
                         SDL_SetPaletteColors(
                             glyph->format->palette,
-                            inverted_colors,
+                            colours[!colour_idx],
                             0,
                             2);
 
-                        /* fill the character area with white,
-                         * so the glyph is visible */
+                        /* fill the character area with the foreground
+                         * colour, so the glyph is visible */
                         SDL_FillRect(
                             surf,
                             &scr_rect,
-                            SDL_MapRGB(surf->format, 255, 255, 255));
+                            foreground);
                     }
                     /* TODO: bold */
 
@@ -654,10 +683,7 @@ int main (int argc, char *argv[])
                             SDL_FillRect(
                                 surf,
                                 &rect,
-                                ch.reverse
-                                ? SDL_MapRGB(surf->format,   0,   0,   0)
-                                : SDL_MapRGB(surf->format, 255, 255, 255)
-                                );
+                                foreground);
                         }
                     }
 
@@ -666,7 +692,7 @@ int main (int argc, char *argv[])
                         /* use regular colours */
                         SDL_SetPaletteColors(
                             glyph->format->palette,
-                            normal_colors,
+                            colours[colour_idx],
                             0,
                             2);
                     }
@@ -687,6 +713,23 @@ int main (int argc, char *argv[])
         {
         case SDL_QUIT:
             done = true;
+            break;
+
+        case SDL_WINDOWEVENT:
+            switch (event.window.type)
+            {
+            case SDL_WINDOWEVENT_SHOWN:
+            case SDL_WINDOWEVENT_EXPOSED:
+            case SDL_WINDOWEVENT_RESIZED:
+            case SDL_WINDOWEVENT_MAXIMIZED:
+            case SDL_WINDOWEVENT_RESTORED:
+                update_screen = true;
+                break;
+
+            case SDL_WINDOWEVENT_MOVED:
+                puts("moved");
+                break;
+            }
             break;
 
         /* TODO: auto repeat, local echo */
