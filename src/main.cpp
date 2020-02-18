@@ -6,7 +6,6 @@
  *
  */
 /* TODO:
- *  bold
  *  auto repeat
  *  local echo
  *  SETUP mode
@@ -161,7 +160,8 @@ std::unordered_map<SDL_Keycode, std::array<int, 3>> keymap =\
 
 
 int colour_idx = 0;
-SDL_Color colours[2][2] =\
+int colour_isbold = 0;
+SDL_Color colours[4][2] =\
 {
     /* normal colours */
     {
@@ -176,30 +176,39 @@ SDL_Color colours[2][2] =\
         /* foreground */
         (SDL_Color)
         {
-            .r = 255,
-            .g = 255,
-            .b = 255,
+            .r = (unsigned char)(colours[2][1].r * 0.75),
+            .g = (unsigned char)(colours[2][1].g * 0.75),
+            .b = (unsigned char)(colours[2][1].b * 0.75),
             .a = 255
         }
     },
     /* inverted colours */
     {
         /* background */
+        colours[0][1],
+        /* foreground */
+        colours[0][0]
+    },
+
+    /* normal bold colours */
+    {
+        /* background */
+        colours[0][0],
+        /* foreground */
         (SDL_Color)
         {
             .r = 255,
             .g = 255,
             .b = 255,
             .a = 255
-        },
-        /* foreground */
-        (SDL_Color)
-        {
-            .r =   0,
-            .g =   0,
-            .b =   0,
-            .a = 255
         }
+    },
+    /* inverted bold colours */
+    {
+        /* background */
+        colours[0][1],
+        /* foreground */
+        colours[0][0]
     }
 };
 
@@ -351,7 +360,7 @@ SDL_Surface *image_to_surface(Image in)
 
     if (SDL_SetPaletteColors(
             surf->format->palette,
-            colours[colour_idx],
+            colours[0],
             0,
             2)
         < 0)
@@ -387,6 +396,11 @@ void write_to(int fd, std::string data)
 /* Terminal Emulator */
 int main (int argc, char *argv[])
 {
+    if (argc == 2)
+    {
+        VT102CONFIG_do_trace = (std::string(argv[1]) == "--trace");
+    }
+
     int err = 0;
 
     /* open the pseudoterminal master fd */
@@ -540,22 +554,20 @@ int main (int argc, char *argv[])
             }
 
 
-            /* render the screen */
-            Uint32 foreground = SDL_MapRGB(
-                surf->format,
-                term.DECSCNM? 0 : 255,
-                term.DECSCNM? 0 : 255,
-                term.DECSCNM? 0 : 255);
-            Uint32 background = SDL_MapRGB(
-                surf->format,
-                term.DECSCNM? 255 : 0,
-                term.DECSCNM? 255 : 0,
-                term.DECSCNM? 255 : 0);
 
             /* clear the screen */
-            SDL_FillRect(surf, nullptr, background);
+            SDL_FillRect(
+                surf,
+                nullptr,
+                SDL_MapRGB(
+                    surf->format,
+                    colours[term.DECSCNM][0].r,
+                    colours[term.DECSCNM][0].g,
+                    colours[term.DECSCNM][0].b));
+
             colour_idx = term.DECSCNM? 1 : 0;
 
+            /* render the screen */
             for (ssize_t y = 0; y < term.rows; ++y)
             {
                 Line line = term.screen[y];
@@ -582,9 +594,11 @@ int main (int argc, char *argv[])
                     int fontidx = term.fontidx(ch.charset, ch.ch);
                     SDL_Surface *glyph = font[fontidx];
 
+                    colour_isbold = ch.bold? 2 : 0;
+
                     SDL_SetPaletteColors(
                         glyph->format->palette,
-                        colours[colour_idx],
+                        colours[colour_isbold + colour_idx],
                         0,
                         2);
 
@@ -648,7 +662,7 @@ int main (int argc, char *argv[])
                         /* use inverted colours */
                         SDL_SetPaletteColors(
                             glyph->format->palette,
-                            colours[!colour_idx],
+                            colours[colour_isbold + !colour_idx],
                             0,
                             2);
 
@@ -657,9 +671,12 @@ int main (int argc, char *argv[])
                         SDL_FillRect(
                             surf,
                             &scr_rect,
-                            foreground);
+                            SDL_MapRGB(
+                                surf->format,
+                                colours[colour_idx][1].r,
+                                colours[colour_idx][1].g,
+                                colours[colour_idx][1].b));
                     }
-                    /* TODO: bold */
 
                     /* draw the character */
                     if (!ch.blink || !blink_off)
@@ -673,17 +690,22 @@ int main (int argc, char *argv[])
 
                         if (ch.underline)
                         {
-                            /* TODO: determine this through the font */
+                            /* TODO: determine the underline position through the font? */
                             /* draw an underline */
                             SDL_Rect rect;
                             rect.w = scr_rect.w;
                             rect.h = 1;
                             rect.x = scr_rect.x;
                             rect.y = scr_rect.y + scr_rect.h - 2;
+
                             SDL_FillRect(
                                 surf,
                                 &rect,
-                                foreground);
+                                SDL_MapRGB(
+                                    surf->format,
+                                    colours[colour_isbold + (ch.reverse? !colour_idx : colour_idx)][1].r,
+                                    colours[colour_isbold + (ch.reverse? !colour_idx : colour_idx)][1].g,
+                                    colours[colour_isbold + (ch.reverse? !colour_idx : colour_idx)][1].b));
                         }
                     }
 

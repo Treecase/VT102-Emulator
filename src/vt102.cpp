@@ -14,6 +14,22 @@
 #include <stdexcept>
 
 
+bool VT102CONFIG_do_trace = false;
+
+
+#define TRACE(fmt, ...)             \
+    ({                              \
+        if (VT102CONFIG_do_trace)   \
+        {                           \
+            fprintf(                \
+                stderr,             \
+                "%s: " fmt "\n",    \
+                __func__,           \
+                ##__VA_ARGS__);     \
+        }                           \
+    })
+
+
 
 void VT102::output(std::string message)
 {
@@ -58,26 +74,31 @@ void VT102::interpret_byte(uint8_t ch)
         {
         /* DECDHL: upper half double-height double-width */
         case '3':
+            TRACE("DECDHL upper");
             screen[curs_y].attr = Line::DOUBLE_HEIGHT_UPPER;
             break;
 
         /* DECDHL: lower half double-height double-width */
         case '4':
+            TRACE("DECDHL lower");
             screen[curs_y].attr = Line::DOUBLE_HEIGHT_LOWER;
             break;
 
         /* DECSWL: single-height single-width */
         case '5':
+            TRACE("DECSWL");
             screen[curs_y].attr = Line::NORMAL;
             break;
 
         /* DECDWL: single-height double-width */
         case '6':
+            TRACE("DECDWL");
             screen[curs_y].attr = Line::DOUBLE_WIDTH;
             break;
 
         /* DECALN */
         case '8':
+            TRACE("DECALN");
             for (ssize_t y = 0; y < rows; ++y)
             {
                 for (ssize_t x = 0; x < cols; ++x)
@@ -100,6 +121,7 @@ void VT102::interpret_byte(uint8_t ch)
         break;
 
     case State::G0SetSelect:
+        TRACE("G0 select '%c'", ch);
         switch (ch)
         {
         case 'A':
@@ -129,6 +151,7 @@ void VT102::interpret_byte(uint8_t ch)
         break;
 
     case State::G1SetSelect:
+        TRACE("G1 select '%c'", ch);
         switch (ch)
         {
         case 'A':
@@ -166,33 +189,39 @@ void VT102::interpret_byte_control_character(uint8_t ch)
     /* NUL */
     case '\000':
         /* ignored */
+        TRACE("NUL");
         break;
 
     /* ETX */
     case '\003':
         /* TODO: selectable as half-duplex turnaround */
+        TRACE("ETX");
         throw std::runtime_error("ETX not implemented");
         break;
 
     /* EOT */
     case '\004':
         /* TODO: selectable as half-duplex turnaround or disconnect */
+        TRACE("EOT");
         throw std::runtime_error("EOT not implemented");
         break;
 
     /* ENQ */
     case '\005':
+        TRACE("ENQ");
         output(answerback);
         break;
 
     /* BEL */
     case '\a':
         /* TODO: beep */
+        TRACE("BEL");
         puts("boop");
         break;
 
     /* BS */
     case '\b':
+        TRACE("BS");
         if (curs_x - 1 >= 0)
         {
             curs_x -= 1;
@@ -202,6 +231,7 @@ void VT102::interpret_byte_control_character(uint8_t ch)
     /* HT */
     case '\t':
       {
+        TRACE("HT");
         ssize_t tmp = curs_x;
         /* HT moves the cursor to the next tab stop,
          * or to the right margin if there are no more tab stops */
@@ -220,6 +250,10 @@ void VT102::interpret_byte_control_character(uint8_t ch)
     case '\n':
     case '\v':
     case '\f':
+        TRACE("%s",
+            (ch == '\n' || ch == '\v')
+                ? (ch == '\n')? "LF" : "VT"
+                : "FF");
         /* TODO: proper movement (scrolling, etc.) */
         /* if LNM is set, LF moves to the next line AND
          * moves to column 0 */
@@ -240,34 +274,40 @@ void VT102::interpret_byte_control_character(uint8_t ch)
 
     /* CR */
     case '\r':
+        TRACE("CR");
         curs_x = 0;
         /* TODO: can be selected as half-duplex turnaround */
         break;
 
     /* SO */
     case '\016':
+        TRACE("SO");
         current_charset = 1;
         break;
 
     /* SI */
     case '\017':
+        TRACE("SI");
         current_charset = 0;
         break;
 
     /* DC1 */
     case '\021':
+        TRACE("DC1");
         xon = true;
         break;
 
     /* DC3 */
     case '\023':
         /* TODO: can be selected as half-duplex turnaround */
+        TRACE("DC3");
         xon = false;
         break;
 
     /* CAN, SUB */
     case '\030':
     case '\032':
+        TRACE("%s", ch == '\030'? "CAN" : "SUB");
         if (state == State::Escape || state == State::CtrlSeq)
         {
             state = State::Normal;
@@ -279,17 +319,20 @@ void VT102::interpret_byte_control_character(uint8_t ch)
 
     /* ESC */
     case '\033':
+        TRACE("ESC");
         state = State::Escape;
         break;
 
     /* DEL */
     case '\177':
         /* ignored */
+        TRACE("DEL");
         break;
 
 
     /* normal character */
     default:
+        TRACE("%c", ch);
         this->putc(ch);
         break;
     }
@@ -303,11 +346,13 @@ void VT102::interpret_byte_escape(uint8_t ch)
     /* RIS */
     case 'c':
         /* TODO: reset (leave this unimplemented?) */
+        TRACE("RIS");
         throw std::runtime_error("RIS not implemented");
         break;
 
     /* IND */
     case 'D':
+        TRACE("IND");
         curs_y += 1;
         if (curs_y > scroll_bottom)
         {
@@ -317,6 +362,7 @@ void VT102::interpret_byte_escape(uint8_t ch)
 
     /* NEL */
     case 'E':
+        TRACE("NEL");
         curs_x = 0;
         curs_y += 1;
         if (curs_y > scroll_bottom)
@@ -327,11 +373,13 @@ void VT102::interpret_byte_escape(uint8_t ch)
 
     /* HTS */
     case 'H':
+        TRACE("HTS");
         tab_stops[curs_x] = true;
         break;
 
     /* RI */
     case 'M':
+        TRACE("RI");
         curs_y -= 1;
         if (curs_y < scroll_top)
         {
@@ -341,21 +389,25 @@ void VT102::interpret_byte_escape(uint8_t ch)
 
     /* SS2 */
     case 'N':
+        TRACE("SS2");
         single_shift = 2;
         break;
 
     /* DECID */
     case 'Z':
+        TRACE("DECID");
         output("\033[?6c");
         break;
 
     /* SS3 */
     case '0':
+        TRACE("SS3");
         single_shift = 3;
         break;
 
     /* DECSC */
     case '7':
+        TRACE("DECSC");
         /* save cursor position, character attribute, charset,
          * and origin mode */
         if (saved == nullptr)
@@ -374,6 +426,7 @@ void VT102::interpret_byte_escape(uint8_t ch)
 
     /* DECRC */
     case '8':
+        TRACE("DECRC");
         /* restore previously saved state, or reset cursor to home
          * position if there is no saved state */
         if (saved == nullptr)
@@ -394,6 +447,7 @@ void VT102::interpret_byte_escape(uint8_t ch)
 
     /* CSI */
     case '[':
+        TRACE("CSI");
         cmd = new ControlSequence();
         state = State::CtrlSeq;
         break;
@@ -426,7 +480,6 @@ void VT102::interpret_byte_escape(uint8_t ch)
     default:
         throw std::runtime_error(
             "undefined escape sequence `ESC "
-            //+ std::string(1, ch)
             + std::to_string(ch)
             + "`");
         break;
@@ -506,6 +559,7 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                 {
                     delta = curs_y - scroll_top;
                 }
+                TRACE("CUU %d", delta);
                 move_curs(curs_x, curs_y - delta);
               } break;
 
@@ -530,6 +584,7 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                 {
                     delta = scroll_bottom - curs_y;
                 }
+                TRACE("CUD %d", delta);
                 move_curs(curs_x, curs_y + delta);
               } break;
 
@@ -554,6 +609,7 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                 {
                     delta = (curs_x + delta) - (cols - 1);
                 }
+                TRACE("CUF %d", delta);
                 move_curs(curs_x + delta, curs_y);
               } break;
 
@@ -578,6 +634,7 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                 {
                     delta = curs_x;
                 }
+                TRACE("CUB %d", delta);
                 move_curs(curs_x - delta, curs_y);
               } break;
 
@@ -620,6 +677,10 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                         + "takes up to 2 parameters");
                     break;
                 }
+                TRACE("%s %d %d",
+                    ch == 'H'? "CUP" : "HVP",
+                    newx,
+                    newy);
                 /* IMPORTANT:
                  *  move_curs is not used here intentionally,
                  *  because CUP and HVP allow the cursor to be
@@ -669,16 +730,21 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                     break;
 
                 default:
-                    throw std::runtime_error("ED takes up to 1 parameter");
+                    throw std::runtime_error(
+                        "ED takes up to 1 parameter");
                     break;
                 }
                 switch (arg)
                 {
                 case 0:
                     /* erase from cursor to end of screen */
+                    TRACE("ED curs to end of screen");
                     for (ssize_t y = curs_y; y < rows; ++y)
                     {
-                        for (ssize_t x = curs_x; x < cols; ++x)
+                        for (
+                            ssize_t x = (y == curs_y? curs_x : 0);
+                            x < cols;
+                            ++x)
                         {
                             erase(x, y);
                         }
@@ -687,9 +753,13 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                     break;
                 case 1:
                     /* erase from start of screen to cursor */
+                    TRACE("ED start of screen to curs");
                     for (ssize_t y = 0; y <= curs_y; ++y)
                     {
-                        for (ssize_t x = 0; x <= curs_x; ++x)
+                        for (
+                            ssize_t x = 0;
+                            x <= (y == curs_y? curs_x : cols);
+                            ++x)
                         {
                             erase(x, y);
                         }
@@ -698,6 +768,7 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                     break;
                 case 2:
                     /* erase entire display */
+                    TRACE("ED entire display");
                     for (ssize_t y = 0; y < rows; ++y)
                     {
                         for (ssize_t x = 0; x < cols; ++x)
@@ -709,7 +780,8 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                     break;
 
                 default:
-                    throw std::runtime_error("ED only accepts 1,2, or 3 as a parameter");
+                    throw std::runtime_error(
+                        "ED only accepts 1,2, or 3 as a parameter");
                     break;
                 }
               } break;
@@ -728,20 +800,23 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                     break;
 
                 default:
-                    throw std::runtime_error("EL takes up to 1 parameter");
+                    throw std::runtime_error(
+                        "EL takes up to 1 parameter");
                     break;
                 }
                 switch (arg)
                 {
                 case 0:
                     /* erase from cursor to end of line */
+                    TRACE("EL curs to end of line");
                     for (ssize_t i = curs_x; i < cols; ++i)
                     {
                         erase(i, curs_y);
                     }
                     break;
                 case 1:
-                    /* erase from start to cursor */
+                    /* erase from start of line to cursor */
+                    TRACE("EL start of line to cursor");
                     for (ssize_t i = 0; i <= curs_x; ++i)
                     {
                         erase(i, curs_y);
@@ -749,6 +824,7 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                     break;
                 case 2:
                     /* erase entire line */
+                    TRACE("EL entire line");
                     for (ssize_t i = 0; i < cols; ++i)
                     {
                         erase(i, curs_y);
@@ -756,7 +832,8 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                     break;
 
                 default:
-                    throw std::runtime_error("EL only accepts 0, 1 or 2 as a parameter");
+                    throw std::runtime_error(
+                        "EL only accepts 0, 1 or 2 as a parameter");
                     break;
                 }
               } break;
@@ -780,6 +857,7 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                         "IL takes up to 1 parameter");
                     break;
                 }
+                TRACE("IL %d", arg);
                 /* this sequence is ignored when the cursor is
                  * outside the scrolling region */
                 if (scroll_top <= curs_y && curs_y <= scroll_bottom)
@@ -810,6 +888,7 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                         "DL takes up to 1 parameter");
                     break;
                 }
+                TRACE("DL %d", arg);
                 /* this sequence is ignored when the cursor is
                  * outside the scrolling region */
                 if (scroll_top <= curs_y && curs_y <= scroll_bottom)
@@ -840,6 +919,7 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                         "DCH takes up to 1 parameter");
                     break;
                 }
+                TRACE("DCH %d", arg);
                 for (int i = 0; i < arg; ++i)
                 {
                     del_char(curs_x, curs_y);
@@ -848,6 +928,7 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
 
             /* DA */
             case 'c':
+                TRACE("DA");
                 output("\033[?6c");
                 break;
 
@@ -857,16 +938,20 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                 {
                 /* clear tab stop at current position */
                 case 0:
+                    TRACE("TBC current position");
                     tab_stops[curs_x] = false;
                     break;
-                /* clear all tab stops */
                 case 1:
                     if (cmd->params[0] == "0")
                     {
+                        /* clear tab stop at current position */
+                        TRACE("TBC current position");
                         tab_stops[curs_x] = false;
                     }
                     else if (cmd->params[0] == "3")
                     {
+                        /* clear all tab stops */
+                        TRACE("TBC all");
                         for (size_t x = 0; x < tab_stops.size(); ++x)
                         {
                             tab_stops[x] = false;
@@ -897,15 +982,19 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                     switch (mode)
                     {
                     case 2:
+                        TRACE("%cM KAM", ch == 'h'? 'S' : 'R');
                         KAM = setting;
                         break;
                     case 4:
+                        TRACE("%cM IRM", ch == 'h'? 'S' : 'R');
                         IRM = setting;
                         break;
                     case 12:
+                        TRACE("%cM SRM", ch == 'h'? 'S' : 'R');
                         SRM = setting;
                         break;
                     case 20:
+                        TRACE("%cM LNM", ch == 'h'? 'S' : 'R');
                         LNM = setting;
                         break;
 
@@ -926,6 +1015,7 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                         switch (mode)
                         {
                         case 1:
+                            TRACE("%cM DECCKM", ch == 'h'? 'S' : 'R');
                             /* when the keypad is in Numeric mode,
                              * DECCKM is always reset */
                             if (keypad_mode == KPMode::Numeric)
@@ -938,6 +1028,7 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                             }
                             break;
                         case 2:
+                            TRACE("%cM DECANM", ch == 'h'? 'S' : 'R');
                             if (!setting)
                             {
                                 DECANM = true;
@@ -947,6 +1038,8 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                             }
                             break;
                         case 3:
+                            TRACE("%cM DECCOLM",
+                                ch == 'h'? 'S' : 'R');
                             DECCOLM = setting;
                             cols = setting? 132 : 80;
                             /* when the columns per line is changed,
@@ -960,40 +1053,45 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                             }
                             break;
                         case 4:
+                            TRACE("%cM DECSCLM",
+                                ch == 'h'? 'S' : 'R');
                             DECSCLM = setting;
                             break;
                         case 5:
+                            TRACE("%cM DECSCNM",
+                                ch == 'h'? 'S' : 'R');
                             DECSCNM = setting;
                             break;
                         case 6:
+                            TRACE("%cM DECOM",
+                                ch == 'h'? 'S' : 'R');
                             DECOM = setting;
                             /* the cursor moves to the new home
                              * position when DECOM is changed */
                             move_curs(0, DECOM? scroll_top : 0);
                             break;
                         case 7:
+                            TRACE("%cM DECAWM", ch == 'h'? 'S' : 'R');
                             DECAWM = setting;
                             break;
                         case 8:
+                            TRACE("%cM DECARM", ch == 'h'? 'S' : 'R');
                             DECARM = setting;
                             break;
                         case 18:
+                            TRACE("%cM DECPFF", ch == 'h'? 'S' : 'R');
                             DECPFF = setting;
                             break;
                         case 19:
+                            TRACE("%cM DECPEX", ch == 'h'? 'S' : 'R');
                             DECPEX = setting;
-                            break;
-
-                        case 40:
-                        case 42:
-                        case 45:
-                            /* ??? */
                             break;
 
                         default:
                             throw std::runtime_error(
                                 std::string(setting? "S" : "R")
-                                + std::string("M - undefined DEC Private Mode sequence")
+                                + "M - undefined DEC Private "
+                                + "Mode sequence"
                                 + cmd->params[1]);
                             break;
                         }
@@ -1010,38 +1108,57 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
             /* MC */
             case 'i':
                 /* ignored by this emulator */
+                TRACE("MC");
                 break;
 
             /* SGR */
             case 'm':
                 if (cmd->params.size() == 0)
                 {
+                    TRACE("SGR off");
                     char_attributes = 0;
                 }
                 else
                 {
+                    std::string debug_string = "SGR";
                     for (std::string param : cmd->params)
                     {
-                        int attr = ((param == "")? 0 : std::stoi(param));
+                        int attr = (param == "")
+                            ? 0
+                            : std::stoi(param);
                         switch (attr)
                         {
                         case 0:
+                            debug_string += " off";
                             char_attributes = 0;
                             break;
                         case 1:
+                            debug_string += " bold";
                             char_attributes |= BOLD;
                             break;
                         case 4:
+                            debug_string += " underline";
                             char_attributes |= UNDERLINE;
                             break;
                         case 5:
+                            debug_string += " blink";
                             char_attributes |= BLINK;
                             break;
                         case 7:
+                            debug_string += " reverse";
                             char_attributes |= REVERSE;
+                            break;
+
+                        default:
+                            throw std::runtime_error(
+                                std::string(
+                                    "SGR - undefined DEC Private "
+                                    "Mode sequence")
+                                + cmd->params[1]);
                             break;
                         }
                     }
+                    TRACE("%s", debug_string.c_str());
                 }
                 break;
 
@@ -1060,16 +1177,20 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                             int code = std::stoi(cmd->params[1]);
                             if (code == 15)
                             {
-                                /*  `ESC [ ? 13 n` - no printer connected
+                                /*  `ESC [ ? 13 n` - no printer
+                                 *                   connected
                                  *  `ESC [ ? 11 n` - printer not ready
                                  *  `ESC [ ? 10 n` - printer ready */
+                                TRACE("DSR printer status");
                                 output("\033[?13n");
                             }
                         }
                         else
                         {
                             throw std::runtime_error(
-                                "undefined DEC Private Mode sequence `ESC [ "
+                                std::string(
+                                    "undefined DEC Private Mode "
+                                    "sequence `ESC [ ")
                                 + cmd->params[0]
                                 + ";"
                                 + cmd->params[1]
@@ -1085,13 +1206,16 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                         case 5:
                             /* `ESC [ 0 n` - ready, no errors
                              * `ESC [ 3 n` - error */
+                            TRACE("DSR status");
                             output("\033[0n");
                             break;
                         case 6:
                             /* `ESC [ curs_y ; curs_x R` */
+                            TRACE("DSR cursor position");
                             output(
                                 "\033["
-                                + std::to_string(scroll_top + curs_y + 1)
+                                + std::to_string(
+                                    scroll_top + curs_y + 1)
                                 + ";"
                                 + std::to_string(curs_x + 1)
                                 + "R");
@@ -1100,7 +1224,8 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                     }
                     else
                     {
-                        throw std::runtime_error("DSR takes 1 or 2 arguments");
+                        throw std::runtime_error(
+                            "DSR takes 1 or 2 arguments");
                     }
                 }
                 break;
@@ -1113,10 +1238,12 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                     /* LED on */
                     if (cmd->params[0] == "0")
                     {
+                        TRACE("DECLL on");
                     }
                     /* LED off */
                     else if (cmd->params[0] == "1")
                     {
+                        TRACE("DECLL off");
                     }
                     else
                     {
@@ -1152,6 +1279,7 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                         "DECSTBM takes up to 2 arguments");
                     break;
                 }
+                TRACE("DECSTBM %d %d", top, bottom);
                 /* minimum size of the scrolling region is 2 lines */
                 if (top < bottom && top >= 0 && bottom < rows)
                 {
@@ -1165,6 +1293,7 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
 
             /* DECTST */
             case 'y':
+                TRACE("DECTST");
                 throw std::runtime_error("DECTST not implemented");
                 break;
 

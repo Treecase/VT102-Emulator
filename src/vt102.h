@@ -15,6 +15,7 @@
 #include <vector>
 #include <array>
 
+extern bool VT102CONFIG_do_trace;
 
 
 struct ControlSequence
