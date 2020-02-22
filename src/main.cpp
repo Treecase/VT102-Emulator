@@ -6,7 +6,7 @@
  *
  */
 /* TODO:
- *  auto repeat
+ *  brightness
  *  local echo
  *  SETUP mode
  *  rc file?
@@ -80,81 +80,99 @@ SurfaceFont get_font(FontType type, bool use_132_columns)
 }
 
 
-std::unordered_map<SDL_Keycode, std::array<int, 3>> keymap =\
+std::unordered_map<SDL_Keycode, VT102::Key> keymap =\
 {
-    /* SDL keycode
-     *                 unshifted
-     *                 |    shifted
-     *                 |    |    ctrl
-     *                 |    |    |
-     *                 v    v    v */
-    { SDLK_1,       { '1', '!',  -1 } },
-    { SDLK_2,       { '2', '@',  -1 } },
-    { SDLK_3,       { '3', '#',  -1 } },
-    { SDLK_4,       { '4', '$',  -1 } },
-    { SDLK_5,       { '5', '%',  -1 } },
-    { SDLK_6,       { '6', '^',  -1 } },
-    { SDLK_7,       { '7', '&',  -1 } },
-    { SDLK_8,       { '8', '*',  -1 } },
-    { SDLK_9,       { '9', '(',  -1 } },
-    { SDLK_0,       { '0', ')',  -1 } },
-    { SDLK_MINUS,   { '-', '_',  -1 } },
-    { SDLK_EQUALS,  { '=', '+',  -1 } },
-    { SDLK_BACKQUOTE,{ '`', '~', 036 } },
-    { SDLK_q,       { 'q', 'Q', 021 } },
-    { SDLK_w,       { 'w', 'W', 027 } },
-    { SDLK_e,       { 'e', 'E', 005 } },
-    { SDLK_r,       { 'r', 'R', 022 } },
-    { SDLK_t,       { 't', 'T', 024 } },
-    { SDLK_y,       { 'y', 'Y', 031 } },
-    { SDLK_u,       { 'u', 'U', 025 } },
-    { SDLK_i,       { 'i', 'I', 011 } },
-    { SDLK_o,       { 'o', 'O', 017 } },
-    { SDLK_p,       { 'p', 'P', 020 } },
-    { SDLK_LEFTBRACKET,{ '[', '{', 033 } },
-    { SDLK_RIGHTBRACKET,{ ']', '}', 035 } },
-    { SDLK_DELETE,  { 127, 127, 127 } },
-    { SDLK_a,       { 'a', 'A', 001 } },
-    { SDLK_s,       { 's', 'S', 023 } },
-    { SDLK_d,       { 'd', 'D', 004 } },
-    { SDLK_f,       { 'f', 'F', 006 } },
-    { SDLK_g,       { 'g', 'G', 007 } },
-    { SDLK_h,       { 'h', 'H', 010 } },
-    { SDLK_j,       { 'j', 'J', 012 } },
-    { SDLK_k,       { 'k', 'K', 013 } },
-    { SDLK_l,       { 'l', 'L', 014 } },
-    { SDLK_SEMICOLON,{ ';', ':',  -1 } },
-    { SDLK_QUOTE,   { '\'','"',  -1 } },
-    { SDLK_BACKSLASH,{ '\\','|', 034 } },
-    { SDLK_z,       { 'z', 'Z', 032 } },
-    { SDLK_x,       { 'x', 'X', 030 } },
-    { SDLK_c,       { 'c', 'C', 003 } },
-    { SDLK_v,       { 'v', 'V', 026 } },
-    { SDLK_b,       { 'b', 'B', 002 } },
-    { SDLK_n,       { 'n', 'N', 016 } },
-    { SDLK_m,       { 'm', 'M', 015 } },
-    { SDLK_COMMA,   { ',', '<',  -1 } },
-    { SDLK_PERIOD,  { '.', '>',  -1 } },
-    { SDLK_SLASH,   { '/', '?', 037 } },
-    { SDLK_SPACE,   { ' ', ' ', 000 } },
+    /* SDL keycode  VT102 Key */
+    { SDLK_F1,          VT102::Key::SetUp       },
+    { SDLK_UP,          VT102::Key::Up          },
+    { SDLK_DOWN,        VT102::Key::Down        },
+    { SDLK_LEFT,        VT102::Key::Left        },
+    { SDLK_RIGHT,       VT102::Key::Right       },
 
-    /* for keypad keys, the second column is used for the final byte
-     * of the code generated in ANSI alternate keypad mode */
-    { SDLK_KP_0,    { '0', '0', -1 } },
-    { SDLK_KP_1,    { '1', '1', -1 } },
-    { SDLK_KP_2,    { '2', '2', -1 } },
-    { SDLK_KP_3,    { '3', '3', -1 } },
-    { SDLK_KP_4,    { '4', '4', -1 } },
-    { SDLK_KP_5,    { '5', '5', -1 } },
-    { SDLK_KP_6,    { '6', '6', -1 } },
-    { SDLK_KP_7,    { '7', '7', -1 } },
-    { SDLK_KP_8,    { '8', '8', -1 } },
-    { SDLK_KP_9,    { '9', '9', -1 } },
-    { SDLK_KP_MINUS,{ '-', '-', -1 } },
-    { SDLK_KP_COMMA,{ ',', ',', -1 } },
-    { SDLK_KP_PERIOD,{'.', '.', -1 } },
+    { SDLK_ESCAPE,      VT102::Key::Escape      },
+    { SDLK_1,           VT102::Key::KB_1        },
+    { SDLK_2,           VT102::Key::KB_2        },
+    { SDLK_3,           VT102::Key::KB_3        },
+    { SDLK_4,           VT102::Key::KB_4        },
+    { SDLK_5,           VT102::Key::KB_5        },
+    { SDLK_6,           VT102::Key::KB_6        },
+    { SDLK_7,           VT102::Key::KB_7        },
+    { SDLK_8,           VT102::Key::KB_8        },
+    { SDLK_9,           VT102::Key::KB_9        },
+    { SDLK_0,           VT102::Key::KB_0        },
+    { SDLK_MINUS,       VT102::Key::Minus       },
+    { SDLK_EQUALS,      VT102::Key::Equals      },
+    { SDLK_BACKQUOTE,   VT102::Key::Backtick    },
+    { SDLK_BACKSPACE,   VT102::Key::Backspace   },
+    { SDLK_PAUSE,       VT102::Key::Break       },
+
+    { SDLK_TAB,         VT102::Key::Tab         },
+    { SDLK_q,           VT102::Key::KB_Q        },
+    { SDLK_w,           VT102::Key::KB_W        },
+    { SDLK_e,           VT102::Key::KB_E        },
+    { SDLK_r,           VT102::Key::KB_R        },
+    { SDLK_t,           VT102::Key::KB_T        },
+    { SDLK_y,           VT102::Key::KB_Y        },
+    { SDLK_u,           VT102::Key::KB_U        },
+    { SDLK_i,           VT102::Key::KB_I        },
+    { SDLK_o,           VT102::Key::KB_O        },
+    { SDLK_p,           VT102::Key::KB_P        },
+    { SDLK_LEFTBRACKET, VT102::Key::LeftBracket },
+    { SDLK_RIGHTBRACKET,VT102::Key::RightBracket},
+    { SDLK_RETURN,      VT102::Key::Return      },
+    { SDLK_DELETE,      VT102::Key::Delete      },
+
+    { SDLK_a,           VT102::Key::KB_A        },
+    { SDLK_s,           VT102::Key::KB_S        },
+    { SDLK_d,           VT102::Key::KB_D        },
+    { SDLK_f,           VT102::Key::KB_F        },
+    { SDLK_g,           VT102::Key::KB_G        },
+    { SDLK_h,           VT102::Key::KB_H        },
+    { SDLK_j,           VT102::Key::KB_J        },
+    { SDLK_k,           VT102::Key::KB_K        },
+    { SDLK_l,           VT102::Key::KB_L        },
+    { SDLK_SEMICOLON,   VT102::Key::Semicolon   },
+    { SDLK_QUOTE,       VT102::Key::Quote       },
+    { SDLK_BACKSLASH,   VT102::Key::Backslash   },
+
+    { SDLK_SCROLLLOCK,  VT102::Key::NoScroll    },
+    { SDLK_z,           VT102::Key::KB_Z        },
+    { SDLK_x,           VT102::Key::KB_X        },
+    { SDLK_c,           VT102::Key::KB_C        },
+    { SDLK_v,           VT102::Key::KB_V        },
+    { SDLK_b,           VT102::Key::KB_B        },
+    { SDLK_n,           VT102::Key::KB_N        },
+    { SDLK_m,           VT102::Key::KB_M        },
+    { SDLK_COMMA,       VT102::Key::Comma       },
+    { SDLK_PERIOD,      VT102::Key::Period      },
+    { SDLK_SLASH,       VT102::Key::Slash       },
+    { SDLK_LALT,        VT102::Key::LineFeed    },
+
+    { SDLK_SPACE,       VT102::Key::Space       },
+
+    { SDLK_HOME,        VT102::Key::PF1         },
+    { SDLK_PAGEUP,      VT102::Key::PF2         },
+    { SDLK_PAGEDOWN,    VT102::Key::PF3         },
+    { SDLK_END,         VT102::Key::PF4         },
+
+    { SDLK_KP_7,        VT102::Key::KP_7        },
+    { SDLK_KP_8,        VT102::Key::KP_8        },
+    { SDLK_KP_9,        VT102::Key::KP_9        },
+    { SDLK_KP_MINUS,    VT102::Key::KP_Minus    },
+
+    { SDLK_KP_4,        VT102::Key::KP_4        },
+    { SDLK_KP_5,        VT102::Key::KP_5        },
+    { SDLK_KP_6,        VT102::Key::KP_6        },
+    { SDLK_KP_COMMA,    VT102::Key::KP_Comma    },
+
+    { SDLK_KP_1,        VT102::Key::KP_1        },
+    { SDLK_KP_2,        VT102::Key::KP_2        },
+    { SDLK_KP_3,        VT102::Key::KP_3        },
+    { SDLK_KP_ENTER,    VT102::Key::KP_Enter    },
+
+    { SDLK_KP_0,        VT102::Key::KP_0        },
+    { SDLK_KP_PERIOD,   VT102::Key::KP_Period   },
     /* KP_ENTER is not defined here */
-    /* TODO: PF1, 2, 3, and 4 are unimplemented */
 };
 
 
@@ -606,13 +624,16 @@ int main (int argc, char *argv[])
                     if (y == term.curs_y && x == term.curs_x)
                     {
                         ch.blink = true;
-                        if (term.block_cursor)
+                        if (term.setup.block_cursor)
                         {
-                            ch.reverse = true;
+                            if (!blink_off)
+                            {
+                                ch.reverse = !ch.reverse;
+                            }
                         }
                         else
                         {
-                            ch.underline = true;
+                            ch.underline = !ch.underline;
                         }
                     }
 
@@ -690,7 +711,8 @@ int main (int argc, char *argv[])
 
                         if (ch.underline)
                         {
-                            /* TODO: determine the underline position through the font? */
+                            /* TODO: determine the underline
+                             * position through the font? */
                             /* draw an underline */
                             SDL_Rect rect;
                             rect.w = scr_rect.w;
@@ -703,9 +725,18 @@ int main (int argc, char *argv[])
                                 &rect,
                                 SDL_MapRGB(
                                     surf->format,
-                                    colours[colour_isbold + (ch.reverse? !colour_idx : colour_idx)][1].r,
-                                    colours[colour_isbold + (ch.reverse? !colour_idx : colour_idx)][1].g,
-                                    colours[colour_isbold + (ch.reverse? !colour_idx : colour_idx)][1].b));
+                                    colours[colour_isbold
+                                        + (ch.reverse
+                                            ? !colour_idx
+                                            : colour_idx)][1].r,
+                                    colours[colour_isbold
+                                        + (ch.reverse
+                                            ? !colour_idx
+                                            : colour_idx)][1].g,
+                                    colours[colour_isbold
+                                        + (ch.reverse
+                                            ? !colour_idx
+                                            : colour_idx)][1].b));
                         }
                     }
 
@@ -754,153 +785,44 @@ int main (int argc, char *argv[])
             }
             break;
 
-        /* TODO: auto repeat, local echo */
+        /* TODO: local echo */
         case SDL_KEYDOWN:
             if (!term.KAM)
             {
-                switch (event.key.keysym.sym)
+                if (   term.DECARM
+                    || (!term.DECARM && event.key.repeat == 0))
                 {
-                case SDLK_UP:
-                case SDLK_DOWN:
-                case SDLK_LEFT:
-                case SDLK_RIGHT:
-                  {
-                    char msg[4] = "\0\0\0";
-                    msg[0] = '\033';  /* ESC */
-                    msg[1] = term.DECCKM? '0' : '[';
-                    switch (event.key.keysym.sym)
-                    {
-                    case SDLK_UP:
-                        msg[2] = 'A';
-                        break;
-                    case SDLK_DOWN:
-                        msg[2] = 'B';
-                        break;
-                    case SDLK_RIGHT:
-                        msg[2] = 'C';
-                        break;
-                    case SDLK_LEFT:
-                        msg[2] = 'D';
-                        break;
-                    }
-                    msg[3] = '\0';
-                    write_to(master, std::string(msg));
-                  } break;
-
-                case SDLK_ESCAPE:
-                  {
-                    char ch = '\033'; /* ESC */
-                    write(master, &ch, sizeof(ch));
-                  } break;
-
-                case SDLK_BACKSPACE:
-                  {
-                    char ch = '\b';
-                    write(master, &ch, sizeof(ch));
-                  } break;
-
-                case SDLK_PAUSE:
-                    /* TODO:
-                     *  break defined by the computer system */
-                    /* TODO: SHIFT + BREAK -> disconnect */
-                    /* TODO:
-                     *  CTRL + BREAK -> transmit answerback
-                     *  message */
-                    break;
-
-                case SDLK_TAB:
-                  {
-                    char ch = '\t';
-                    write(master, &ch, sizeof(ch));
-                  } break;
-
-                case SDLK_RETURN:
-                case SDLK_KP_ENTER:
-                    /* if the keypad is in application mode, KP_ENTER
-                     * sends ESC 0 M */
-                    if (   event.key.keysym.sym == SDLK_KP_ENTER
-                        && term.keypad_mode != VT102::KPMode::Numeric)
-                    {
-                        write_to(master, "\0330M");
-                    }
-                    /* otherwise, KP_ENTER acts the same as RETURN */
-                    else
-                    {
-                        char ch = '\r';
-                        write(master, &ch, sizeof(ch));
-                        if (term.LNM)
-                        {
-                            ch = '\n';
-                            write(master, &ch, sizeof(ch));
-                        }
-                    }
-                    break;
-
-                case SDLK_KP_0:
-                case SDLK_KP_1:
-                case SDLK_KP_2:
-                case SDLK_KP_3:
-                case SDLK_KP_4:
-                case SDLK_KP_5:
-                case SDLK_KP_6:
-                case SDLK_KP_7:
-                case SDLK_KP_8:
-                case SDLK_KP_9:
-                case SDLK_KP_MINUS:
-                case SDLK_KP_COMMA:
-                case SDLK_KP_PERIOD:
-                /* TODO: PF1, 2, 3, and 4 are unimplemented */
-                    if (   term.keypad_mode
-                        == VT102::KPMode::Application)
-                    {
-                        char code[4] =\
-                        {
-                            '\033', /* ESC */
-                            '0',
-                            (char)keymap.at(
-                                event.key.keysym.sym).at(1),
-                            '\0'
-                        };
-                        write_to(master, code);
-                    }
-                    else
-                    {
-                        char ch = keymap.at(
-                            event.key.keysym.sym).at(0);
-                        write(master, &ch, sizeof(ch));
-                    }
-                    break;
-
-
-                default:
-                  {
-                    int idx = 0;
-                    if (  event.key.keysym.mod
-                        & (KMOD_SHIFT | KMOD_CAPS))
-                    {
-                        idx = 1;
-                    }
-                    /* IMPORTANT: CTRL overrides SHIFT! */
-                    if (event.key.keysym.mod & KMOD_CTRL)
-                    {
-                        idx = 2;
-                    }
-                    bool do_write = true;
-                    char ch = 0;
+                    bool success = true;
+                    /* check if the key is bound */
                     try
                     {
-                        ch = keymap.at(
-                            event.key.keysym.sym).at(idx);
+                        keymap.at(event.key.keysym.sym);
                     }
-                    catch (std::out_of_range &err)
+                    catch (std::out_of_range &e)
                     {
-                        do_write = false;
+                        success = false;
                     }
-                    if (do_write)
+
+                    /* if the key is bound, send the appropriate
+                     * keypress event to the terminal */
+                    if (success)
                     {
-                        write(master, &ch, sizeof(ch));
+                        unsigned mod = VT102::Modifiers::None;
+                        if (event.key.keysym.mod & KMOD_CTRL)
+                        {
+                            mod |= VT102::Modifiers::Ctrl;
+                        }
+                        if (event.key.keysym.mod & KMOD_SHIFT)
+                        {
+                            mod |= VT102::Modifiers::Shift;
+                        }
+                        if (event.key.keysym.mod & KMOD_CAPS)
+                        {
+                            mod |= VT102::Modifiers::CapsLock;
+                        }
+                        term.keyboard_input(
+                            keymap[event.key.keysym.sym], mod);
                     }
-                  } break;
                 }
             }
             break;

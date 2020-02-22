@@ -6,8 +6,6 @@
  *
  */
 
-/* TODO: keyboard */
-
 #ifndef _VT102_H
 #define _VT102_H
 
@@ -92,7 +90,7 @@ public:
         Left,
         Right,
 
-        Esc,
+        Escape,
         KB_1,
         KB_2,
         KB_3,
@@ -103,52 +101,49 @@ public:
         KB_8,
         KB_9,
         KB_0,
-        Underline,
+        Minus,
         Equals,
         Backtick,
         Backspace,
         Break,
 
         Tab,
-        Q,
-        W,
-        E,
-        R,
-        T,
-        Y,
-        U,
-        I,
-        O,
-        P,
+        KB_Q,
+        KB_W,
+        KB_E,
+        KB_R,
+        KB_T,
+        KB_Y,
+        KB_U,
+        KB_I,
+        KB_O,
+        KB_P,
         LeftBracket,
         RightBracket,
         Return,
         Delete,
 
-        Ctrl,
-        CapsLock,
-        A,
-        S,
-        D,
-        F,
-        G,
-        H,
-        J,
-        K,
-        L,
+        KB_A,
+        KB_S,
+        KB_D,
+        KB_F,
+        KB_G,
+        KB_H,
+        KB_J,
+        KB_K,
+        KB_L,
         Semicolon,
         Quote,
         Backslash,
 
         NoScroll,
-        Shift,
-        Z,
-        X,
-        C,
-        V,
-        B,
-        N,
-        M,
+        KB_Z,
+        KB_X,
+        KB_C,
+        KB_V,
+        KB_B,
+        KB_N,
+        KB_M,
         Comma,
         Period,
         Slash,
@@ -177,7 +172,14 @@ public:
         KP_Enter,
 
         KP_0,
-        KP_Dot,
+        KP_Period,
+    };
+    enum Modifiers
+    {
+        None     = 0,
+        Ctrl     = 1 << 0,
+        Shift    = 1 << 1,
+        CapsLock = 1 << 2
     };
 
     ssize_t cols,
@@ -194,7 +196,13 @@ public:
         Pound,
         G0SetSelect,
         G1SetSelect,
-    } state;
+        SetUpA,
+        SetUpB,
+        CreateAnswerback,
+    };
+
+    State state,
+          saved_state;
 
     enum class KPMode
     {
@@ -230,23 +238,53 @@ public:
          DECPFF,    /* print form feed off/on */
          DECPEX;    /* print full screen/scroll region */
 
-    bool online,
-         block_cursor,
-         margin_bell,
-         keyclick,
-         auto_XON_XOFF,
-         UK_charset,
-         break_enable,
-         disconnect_character_enable;
-    double brightness;
-    std::array<bool, 132> tab_stops;
+    struct
+    {
+        bool online,
+             block_cursor,
+             margin_bell,
+             keyclick,
+             auto_XON_XOFF,
+             UK_charset,
+             stop_bits,
+             receive_parity,
+             break_enable,
+             disconn_char_enable,
+             disconn_delay,
+             auto_answerback,
+             initial_direction,
+             auto_turnaround,
+             power,
+             wps_terminal_kbd;
+        int delimiter,
+            answerback_idx;
+        double brightness;
+        std::array<bool, 132> tab_stops;
+
+        struct
+        {
+            int data_parity_bits,
+                tx_speed,
+                rx_speed,
+                control,
+                turnaround_disconn_char;
+        } modem;
+        struct
+        {
+            int data_parity_bits,
+                tx_rx_speed;
+        } printer;
+    } setup,
+      user_setup;
+    bool modem_features_selected;
 
     int scroll_top,
         scroll_bottom;
 
     char answerback[20];
 
-    std::vector<Line> screen;
+    std::vector<Line> screen,
+                      saved_screen;
 
     ControlSequence *cmd;
 
@@ -265,18 +303,24 @@ public:
 
 
     void output(std::string message);
+    void keyboard_input(Key key, unsigned int mod);
 
     void interpret_byte(uint8_t ch);
     void interpret_byte_control_character(uint8_t ch);
     void interpret_byte_escape(uint8_t ch);
     void interpret_byte_ctrlseq(uint8_t ch);
 
+    void enter_setup(void);
+    void display_setup(void);
+    void setup_defaults(void);
+    void exit_setup(void);
+
 
     /* get the character at the given x,y coords */
     Char getc_at(ssize_t x, ssize_t y) const;
 
     /* get the font index of ch in the given charset */
-    size_t fontidx(CharSet charset, unsigned char ch);
+    size_t fontidx(CharSet charset, unsigned char ch) const;
 
     /* erase the character at the given position */
     void erase(ssize_t x, ssize_t y);
