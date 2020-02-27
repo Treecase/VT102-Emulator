@@ -37,6 +37,13 @@ void VT102::output(std::string message)
     if (xon)
     {
         outbuffer += message;
+        if (!SRM)
+        {
+            for (char ch : message)
+            {
+                interpret_byte(ch);
+            }
+        }
     }
     else
     {
@@ -46,6 +53,10 @@ void VT102::output(std::string message)
             if (ch == 0x11 || ch == 0x13)
             {
                 outbuffer += ch;
+                if (!SRM)
+                {
+                    interpret_byte(ch);
+                }
             }
         }
     }
@@ -122,6 +133,7 @@ void VT102::keyboard_input(Key key, unsigned int mod)
     };
 
 
+    /* SET-UP answerback creation */
     if (state == State::CreateAnswerback)
     {
         if (setup.delimiter == -1)
@@ -158,174 +170,8 @@ void VT102::keyboard_input(Key key, unsigned int mod)
         curs_x = 3 + (setup.delimiter != -1) + setup.answerback_idx;
         curs_y = rows - 2;
     }
-    else if (state != State::SetUpA && state != State::SetUpB)
-    {
-        switch (key)
-        {
-        case SetUp:
-            enter_setup();
-            curs_y = rows - 2;
-            curs_x = 0;
-            break;
-
-        case Up:
-        case Down:
-        case Left:
-        case Right:
-          {
-            std::unordered_map<Key, char> out =\
-            {
-                { Up,    'A'},
-                { Down,  'B'},
-                { Right, 'C'},
-                { Left,  'D'}
-            };
-            char msg[4] =\
-            {
-                '\033', /* ESC */
-                DECCKM? 'O' : '[',
-                out[key],
-                '\0'
-            };
-            output(std::string(msg));
-          } break;
-
-        case Break:
-            /* TODO: */
-            break;
-
-        case Return:
-        case KP_Enter:
-            if (key == KP_Enter && (mod & Ctrl))
-            {
-                /* TODO: toggle auto print */
-                puts("auto print toggle");
-            }
-            else if (key == KP_Enter && (mod & Shift))
-            {
-                /* TODO: print screen */
-                puts("print screen");
-            }
-            else if (key == KP_Enter && keypad_mode == KPMode::Application)
-            {
-                output("\0330M");
-            }
-            else
-            {
-                if (LNM)
-                {
-                    output("\r\n");
-                }
-                else
-                {
-                    output("\r");
-                }
-            }
-            break;
-
-        case NoScroll:
-            /* TODO: is this right? */
-            xon = !xon;
-            break;
-
-        case PF1:
-        case PF2:
-        case PF3:
-        case PF4:
-          {
-            std::unordered_map<Key, char> byte3 =\
-            {
-                { PF1, 'P' },
-                { PF2, 'Q' },
-                { PF3, 'R' },
-                { PF4, 'S' }
-            };
-            char out[4] =\
-            {
-                '\033', /* ESC */
-                'O',
-                byte3[key],
-                '\0'
-            };
-            output(std::string(out));
-          } break;
-
-        case KP_0:
-        case KP_1:
-        case KP_2:
-        case KP_3:
-        case KP_4:
-        case KP_5:
-        case KP_6:
-        case KP_7:
-        case KP_8:
-        case KP_9:
-        case KP_Minus:
-        case KP_Comma:
-        case KP_Period:
-            if (keypad_mode == KPMode::Numeric)
-            {
-                std::unordered_map<Key, char> out =\
-                {
-                    { KP_0,      '0' },
-                    { KP_1,      '1' },
-                    { KP_2,      '2' },
-                    { KP_3,      '3' },
-                    { KP_4,      '4' },
-                    { KP_5,      '5' },
-                    { KP_6,      '6' },
-                    { KP_7,      '7' },
-                    { KP_8,      '8' },
-                    { KP_9,      '9' },
-                    { KP_Minus,  '-' },
-                    { KP_Comma,  ',' },
-                    { KP_Period, '.' },
-                };
-                output(std::string(1, out[key]));
-            }
-            else
-            {
-                std::unordered_map<Key, char> out =\
-                {
-                    { KP_0,      'p' },
-                    { KP_1,      'q' },
-                    { KP_2,      'r' },
-                    { KP_3,      's' },
-                    { KP_4,      't' },
-                    { KP_5,      'u' },
-                    { KP_6,      'v' },
-                    { KP_7,      'w' },
-                    { KP_8,      'x' },
-                    { KP_9,      'y' },
-                    { KP_Minus,  'm' },
-                    { KP_Comma,  'l' },
-                    { KP_Period, 'n' },
-                };
-                output("\0330" + std::string(1, out[key]));
-            }
-            break;
-
-        default:
-          {
-            int idx = 0;
-            if (mod & (Shift | CapsLock))
-            {
-                idx = 1;
-            }
-            /* IMPORTANT: CTRL overrides SHIFT! */
-            if (mod & Ctrl)
-            {
-                idx = 2;
-            }
-            char out = keymap.at(key).at(idx);
-            if (out != -1)
-            {
-                output(std::string(1, out));
-            }
-          } break;
-        }
-    }
-    else
+    /* SET-UP */
+    else if (state == State::SetUpA || state == State::SetUpB)
     {
         /* TODO: RETURN, TAB, and SPACE move the cursor */
         switch (key)
@@ -528,7 +374,7 @@ void VT102::keyboard_input(Key key, unsigned int mod)
 
         case Down:
             /* decrease brightness */
-            if (setup.brightness - 0.1 > 0)
+            if (setup.brightness - 0.1 >= 0.1)
             {
                 setup.brightness -= 0.1;
             }
@@ -654,6 +500,174 @@ void VT102::keyboard_input(Key key, unsigned int mod)
             display_setup();
             curs_x = (state == State::CreateAnswerback? 3 : x);
             curs_y = y;
+        }
+    }
+    /* normal */
+    else
+    {
+        switch (key)
+        {
+        case SetUp:
+            enter_setup();
+            curs_y = rows - 2;
+            curs_x = 0;
+            break;
+
+        case Up:
+        case Down:
+        case Left:
+        case Right:
+          {
+            std::unordered_map<Key, char> out =\
+            {
+                { Up,    'A'},
+                { Down,  'B'},
+                { Right, 'C'},
+                { Left,  'D'}
+            };
+            char msg[4] =\
+            {
+                '\033', /* ESC */
+                DECCKM? 'O' : '[',
+                out[key],
+                '\0'
+            };
+            output(std::string(msg));
+          } break;
+
+        case Break:
+            /* TODO: */
+            break;
+
+        case Return:
+        case KP_Enter:
+            if (key == KP_Enter && (mod & Ctrl))
+            {
+                /* TODO: toggle auto print */
+                puts("auto print toggle");
+            }
+            else if (key == KP_Enter && (mod & Shift))
+            {
+                /* TODO: print screen */
+                puts("print screen");
+            }
+            else if (key == KP_Enter && keypad_mode == KPMode::Application)
+            {
+                output("\0330M");
+            }
+            else
+            {
+                if (LNM)
+                {
+                    output("\r\n");
+                }
+                else
+                {
+                    output("\r");
+                }
+            }
+            break;
+
+        case NoScroll:
+            /* TODO: is this right? */
+            xon = !xon;
+            break;
+
+        case PF1:
+        case PF2:
+        case PF3:
+        case PF4:
+          {
+            std::unordered_map<Key, char> byte3 =\
+            {
+                { PF1, 'P' },
+                { PF2, 'Q' },
+                { PF3, 'R' },
+                { PF4, 'S' }
+            };
+            char out[4] =\
+            {
+                '\033', /* ESC */
+                'O',
+                byte3[key],
+                '\0'
+            };
+            output(std::string(out));
+          } break;
+
+        case KP_0:
+        case KP_1:
+        case KP_2:
+        case KP_3:
+        case KP_4:
+        case KP_5:
+        case KP_6:
+        case KP_7:
+        case KP_8:
+        case KP_9:
+        case KP_Minus:
+        case KP_Comma:
+        case KP_Period:
+            if (keypad_mode == KPMode::Numeric)
+            {
+                std::unordered_map<Key, char> out =\
+                {
+                    { KP_0,      '0' },
+                    { KP_1,      '1' },
+                    { KP_2,      '2' },
+                    { KP_3,      '3' },
+                    { KP_4,      '4' },
+                    { KP_5,      '5' },
+                    { KP_6,      '6' },
+                    { KP_7,      '7' },
+                    { KP_8,      '8' },
+                    { KP_9,      '9' },
+                    { KP_Minus,  '-' },
+                    { KP_Comma,  ',' },
+                    { KP_Period, '.' },
+                };
+                output(std::string(1, out[key]));
+            }
+            else
+            {
+                std::unordered_map<Key, char> out =\
+                {
+                    { KP_0,      'p' },
+                    { KP_1,      'q' },
+                    { KP_2,      'r' },
+                    { KP_3,      's' },
+                    { KP_4,      't' },
+                    { KP_5,      'u' },
+                    { KP_6,      'v' },
+                    { KP_7,      'w' },
+                    { KP_8,      'x' },
+                    { KP_9,      'y' },
+                    { KP_Minus,  'm' },
+                    { KP_Comma,  'l' },
+                    { KP_Period, 'n' },
+                };
+                output("\0330" + std::string(1, out[key]));
+            }
+            break;
+
+        default:
+          {
+            int idx = 0;
+            if (mod & (Shift | CapsLock))
+            {
+                idx = 1;
+            }
+            /* IMPORTANT: CTRL overrides SHIFT! */
+            if (mod & Ctrl)
+            {
+                idx = 2;
+            }
+            char out = keymap.at(key).at(idx);
+            if (out != -1)
+            {
+                output(std::string(1, out));
+            }
+          } break;
         }
     }
 }
@@ -2666,7 +2680,7 @@ VT102::VT102()
     char_attributes(0),
     KAM(false),
     IRM(false),
-    SRM(false),
+    SRM(true),
     LNM(false),
     DECCKM(false),
     DECANM(true),

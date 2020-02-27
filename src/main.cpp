@@ -6,9 +6,7 @@
  *
  */
 /* TODO:
- *  brightness
- *  local echo
- *  SETUP mode
+ *  local echo (half implemented)
  *  rc file?
  */
 
@@ -61,26 +59,8 @@ enum class FontType
     DoubleHigh,
 };
 
-SurfaceFont get_font(FontType type, bool use_132_columns)
-{
-    switch (type)
-    {
-    case FontType::Normal:
-        return fonts[0 + use_132_columns];
-        break;
-    case FontType::DoubleWide:
-        return fonts[2 + use_132_columns];
-        break;
-    case FontType::DoubleHigh:
-        return fonts[4 + use_132_columns];
-        break;
-    }
-    /* should never happen */
-    throw std::runtime_error("something funky happened!");
-}
 
-
-std::unordered_map<SDL_Keycode, VT102::Key> keymap =\
+std::unordered_map<SDL_Keycode, VT102::Key> const keymap =\
 {
     /* SDL keycode  VT102 Key */
     { SDLK_F1,          VT102::Key::SetUp       },
@@ -175,60 +155,10 @@ std::unordered_map<SDL_Keycode, VT102::Key> keymap =\
     /* KP_ENTER is not defined here */
 };
 
+Uint8 color_red = 255,
+      color_grn = 255,
+      color_blu = 255;
 
-
-int colour_idx = 0;
-int colour_isbold = 0;
-SDL_Color colours[4][2] =\
-{
-    /* normal colours */
-    {
-        /* background */
-        (SDL_Color)
-        {
-            .r =   0,
-            .g =   0,
-            .b =   0,
-            .a = 255
-        },
-        /* foreground */
-        (SDL_Color)
-        {
-            .r = (unsigned char)(colours[2][1].r * 0.75),
-            .g = (unsigned char)(colours[2][1].g * 0.75),
-            .b = (unsigned char)(colours[2][1].b * 0.75),
-            .a = 255
-        }
-    },
-    /* inverted colours */
-    {
-        /* background */
-        colours[0][1],
-        /* foreground */
-        colours[0][0]
-    },
-
-    /* normal bold colours */
-    {
-        /* background */
-        colours[0][0],
-        /* foreground */
-        (SDL_Color)
-        {
-            .r = 255,
-            .g = 255,
-            .b = 255,
-            .a = 255
-        }
-    },
-    /* inverted bold colours */
-    {
-        /* background */
-        colours[0][1],
-        /* foreground */
-        colours[0][0]
-    }
-};
 
 
 
@@ -346,6 +276,66 @@ int thread_monitor_master_fd(void *data)
 }
 
 
+/* get the appropriate font */
+SurfaceFont get_font(FontType type, bool use_132_columns)
+{
+    switch (type)
+    {
+    case FontType::Normal:
+        return fonts[0 + use_132_columns];
+        break;
+    case FontType::DoubleWide:
+        return fonts[2 + use_132_columns];
+        break;
+    case FontType::DoubleHigh:
+        return fonts[4 + use_132_columns];
+        break;
+    }
+    /* should never happen */
+    throw std::runtime_error("something funky happened!");
+}
+
+/* get the appropriate palette */
+std::unique_ptr<SDL_Color[]> get_palette(
+    double brightness,
+    bool inverted,
+    bool bold)
+{
+    SDL_Color const colours[2] =\
+    {
+        /* background */
+        (SDL_Color)
+        {
+            .r =   0,
+            .g =   0,
+            .b =   0,
+            .a = 255
+        },
+        /* foreground */
+        (SDL_Color)
+        {
+            .r = (Uint8)(
+                (bold? color_red : color_red * 0.75) * brightness),
+
+            .g = (Uint8)(
+                (bold? color_grn : color_grn * 0.75) * brightness),
+
+            .b = (Uint8)(
+                (bold? color_blu : color_blu * 0.75) * brightness),
+
+            .a = 255
+        }
+    };
+
+    std::unique_ptr<SDL_Color[]> palette(new SDL_Color[2]);
+    /* background */
+    palette[0] = colours[inverted? 1 : 0];
+    /* foreground */
+    palette[1] = colours[inverted? 0 : 1];
+
+    return palette;
+}
+
 /* convert an Image to an SDL_Surface */
 SDL_Surface *image_to_surface(Image in)
 {
@@ -378,7 +368,7 @@ SDL_Surface *image_to_surface(Image in)
 
     if (SDL_SetPaletteColors(
             surf->format->palette,
-            colours[0],
+            get_palette(1, false, false).get(),
             0,
             2)
         < 0)
@@ -574,16 +564,18 @@ int main (int argc, char *argv[])
 
 
             /* clear the screen */
+            auto pal = get_palette(
+                term.setup.brightness,
+                term.DECSCNM,
+                false);
             SDL_FillRect(
                 surf,
                 nullptr,
                 SDL_MapRGB(
                     surf->format,
-                    colours[term.DECSCNM][0].r,
-                    colours[term.DECSCNM][0].g,
-                    colours[term.DECSCNM][0].b));
-
-            colour_idx = term.DECSCNM? 1 : 0;
+                    pal[0].r,
+                    pal[0].g,
+                    pal[0].b));
 
             /* render the screen */
             for (ssize_t y = 0; y < term.rows; ++y)
@@ -612,11 +604,14 @@ int main (int argc, char *argv[])
                     int fontidx = term.fontidx(ch.charset, ch.ch);
                     SDL_Surface *glyph = font[fontidx];
 
-                    colour_isbold = ch.bold? 2 : 0;
+                    auto pal = get_palette(
+                        term.setup.brightness,
+                        term.DECSCNM ^ ch.reverse,
+                        ch.bold & ch.reverse);
 
                     SDL_SetPaletteColors(
                         glyph->format->palette,
-                        colours[colour_isbold + colour_idx],
+                        pal.get(),
                         0,
                         2);
 
@@ -680,12 +675,10 @@ int main (int argc, char *argv[])
 
                     if (ch.reverse)
                     {
-                        /* use inverted colours */
-                        SDL_SetPaletteColors(
-                            glyph->format->palette,
-                            colours[colour_isbold + !colour_idx],
-                            0,
-                            2);
+                        auto rpal = get_palette(
+                            term.setup.brightness,
+                            term.DECSCNM ^ ch.reverse,
+                            false);
 
                         /* fill the character area with the foreground
                          * colour, so the glyph is visible */
@@ -694,9 +687,9 @@ int main (int argc, char *argv[])
                             &scr_rect,
                             SDL_MapRGB(
                                 surf->format,
-                                colours[colour_idx][1].r,
-                                colours[colour_idx][1].g,
-                                colours[colour_idx][1].b));
+                                rpal[1].r,
+                                rpal[1].g,
+                                rpal[1].b));
                     }
 
                     /* draw the character */
@@ -725,29 +718,10 @@ int main (int argc, char *argv[])
                                 &rect,
                                 SDL_MapRGB(
                                     surf->format,
-                                    colours[colour_isbold
-                                        + (ch.reverse
-                                            ? !colour_idx
-                                            : colour_idx)][1].r,
-                                    colours[colour_isbold
-                                        + (ch.reverse
-                                            ? !colour_idx
-                                            : colour_idx)][1].g,
-                                    colours[colour_isbold
-                                        + (ch.reverse
-                                            ? !colour_idx
-                                            : colour_idx)][1].b));
+                                    pal[1].r,
+                                    pal[1].g,
+                                    pal[1].b));
                         }
-                    }
-
-                    if (ch.reverse)
-                    {
-                        /* use regular colours */
-                        SDL_SetPaletteColors(
-                            glyph->format->palette,
-                            colours[colour_idx],
-                            0,
-                            2);
                     }
                     delete src_rect;
                 }
@@ -785,7 +759,6 @@ int main (int argc, char *argv[])
             }
             break;
 
-        /* TODO: local echo */
         case SDL_KEYDOWN:
             if (!term.KAM)
             {
@@ -821,7 +794,7 @@ int main (int argc, char *argv[])
                             mod |= VT102::Modifiers::CapsLock;
                         }
                         term.keyboard_input(
-                            keymap[event.key.keysym.sym], mod);
+                            keymap.at(event.key.keysym.sym), mod);
                     }
                 }
             }
