@@ -155,9 +155,9 @@ std::unordered_map<SDL_Keycode, VT102::Key> const keymap =\
     /* KP_ENTER is not defined here */
 };
 
-Uint8 color_red = 255,
-      color_grn = 255,
-      color_blu = 255;
+Uint8 colour_red = 255,
+      colour_grn = 255,
+      colour_blu = 255;
 
 
 
@@ -315,14 +315,11 @@ std::unique_ptr<SDL_Color[]> get_palette(
         (SDL_Color)
         {
             .r = (Uint8)(
-                (bold? color_red : color_red * 0.75) * brightness),
-
+                (bold? colour_red : colour_red * 0.75) * brightness),
             .g = (Uint8)(
-                (bold? color_grn : color_grn * 0.75) * brightness),
-
+                (bold? colour_grn : colour_grn * 0.75) * brightness),
             .b = (Uint8)(
-                (bold? color_blu : color_blu * 0.75) * brightness),
-
+                (bold? colour_blu : colour_blu * 0.75) * brightness),
             .a = 255
         }
     };
@@ -607,7 +604,7 @@ int main (int argc, char *argv[])
                     auto pal = get_palette(
                         term.setup.brightness,
                         term.DECSCNM ^ ch.reverse,
-                        ch.bold & ch.reverse);
+                        ch.bold);
 
                     SDL_SetPaletteColors(
                         glyph->format->palette,
