@@ -64,105 +64,59 @@ void VT102::output(std::string message)
 
 void VT102::keyboard_input(Key key, unsigned int mod)
 {
-    std::unordered_map<Key, std::array<int, 3>> const keymap =\
-    {
-        /* key
-         *                 unshifted
-         *                 |    shifted
-         *                 |    |    ctrl
-         *                 |    |    |
-         *                 v    v    v */
-        { Escape,       { 033, 033,  -1 } },
-
-        { KB_1,         { '1', '!',  -1 } },
-        { KB_2,         { '2', '@',  -1 } },
-        { KB_3,         { '3', '#',  -1 } },
-        { KB_4,         { '4', '$',  -1 } },
-        { KB_5,         { '5', '%',  -1 } },
-        { KB_6,         { '6', '^',  -1 } },
-        { KB_7,         { '7', '&',  -1 } },
-        { KB_8,         { '8', '*',  -1 } },
-        { KB_9,         { '9', '(',  -1 } },
-        { KB_0,         { '0', ')',  -1 } },
-        { Minus,        { '-', '_',  -1 } },
-        { Equals,       { '=', '+',  -1 } },
-        { Backtick,     { '`', '~', 036 } },
-        { Backspace,    {'\b','\b',  -1 } },
-
-        { Tab,          {'\t','\t',  -1 } },
-        { KB_Q,         { 'q', 'Q', 021 } },
-        { KB_W,         { 'w', 'W', 027 } },
-        { KB_E,         { 'e', 'E', 005 } },
-        { KB_R,         { 'r', 'R', 022 } },
-        { KB_T,         { 't', 'T', 024 } },
-        { KB_Y,         { 'y', 'Y', 031 } },
-        { KB_U,         { 'u', 'U', 025 } },
-        { KB_I,         { 'i', 'I', 011 } },
-        { KB_O,         { 'o', 'O', 017 } },
-        { KB_P,         { 'p', 'P', 020 } },
-        { LeftBracket,  { '[', '{', 033 } },
-        { RightBracket, { ']', '}', 035 } },
-        { Delete,       {0177,0177,  -1 } },
-
-        { KB_A,         { 'a', 'A', 001 } },
-        { KB_S,         { 's', 'S', 023 } },
-        { KB_D,         { 'd', 'D', 004 } },
-        { KB_F,         { 'f', 'F', 006 } },
-        { KB_G,         { 'g', 'G', 007 } },
-        { KB_H,         { 'h', 'H', 010 } },
-        { KB_J,         { 'j', 'J', 012 } },
-        { KB_K,         { 'k', 'K', 013 } },
-        { KB_L,         { 'l', 'L', 014 } },
-        { Semicolon,    { ';', ':',  -1 } },
-        { Quote,        { '\'','"',  -1 } },
-        { Backslash,    { '\\','|', 034 } },
-
-        { KB_Z,         { 'z', 'Z', 032 } },
-        { KB_X,         { 'x', 'X', 030 } },
-        { KB_C,         { 'c', 'C', 003 } },
-        { KB_V,         { 'v', 'V', 026 } },
-        { KB_B,         { 'b', 'B', 002 } },
-        { KB_N,         { 'n', 'N', 016 } },
-        { KB_M,         { 'm', 'M', 015 } },
-        { Comma,        { ',', '<',  -1 } },
-        { Period,       { '.', '>',  -1 } },
-        { Slash,        { '/', '?', 037 } },
-        { LineFeed,     {'\n','\n',  -1 } },
-
-        { Space,        { ' ', ' ', 000 } },
-    };
-
-
     /* SET-UP answerback creation */
     if (state == State::CreateAnswerback)
     {
-        if (setup.delimiter == -1)
+        char ch = 0;
+        bool err = false;
+        try
         {
-            setup.delimiter = key;
+            ch = getkey(key, mod);
         }
-        else if (key == setup.delimiter)
+        catch (std::invalid_argument &e)
         {
-            setup.answerback_idx = 0;
-            setup.delimiter = -1;
-            state = State::SetUpB;
-            curs_y = rows - 2;
-            curs_x = 0;
+            err = true;
         }
-        else
-        {
-            /* TODO: translate keypresses into characters */
-            char ch = 'x';
-            answerback[setup.answerback_idx++] = ch;
-            /* TODO: control characters appear as a diamond */
-            putc(ch);
 
-            if (setup.answerback_idx >= 20)
+        if (!err)
+        {
+            if (setup.delimiter == -1)
+            {
+                setup.delimiter = ch;
+            }
+            else if (ch == setup.delimiter)
             {
                 setup.answerback_idx = 0;
                 setup.delimiter = -1;
                 state = State::SetUpB;
                 curs_y = rows - 2;
                 curs_x = 0;
+            }
+            else
+            {
+                if (!err)
+                {
+                    answerback[setup.answerback_idx++] = ch;
+
+                    int tmp = single_shift;
+                    if (mod & Ctrl)
+                    {
+                        /* diamond character in the special charset */
+                        ch = 0x60;
+                        single_shift = 2;
+                    }
+                    putc(ch);
+                    single_shift = tmp;
+
+                    if (setup.answerback_idx >= 20)
+                    {
+                        setup.answerback_idx = 0;
+                        setup.delimiter = -1;
+                        state = State::SetUpB;
+                        curs_y = rows - 2;
+                        curs_x = 0;
+                    }
+                }
             }
         }
 
@@ -198,7 +152,20 @@ void VT102::keyboard_input(Key key, unsigned int mod)
                     setup.tab_stops[x] = false;
                 }
             }
-            /* TODO: erase the saved screen */
+
+            /* characters displayed before entering SETUP are lost */
+            for (Line &line : saved_screen)
+            {
+                for (ssize_t x = 0; x < cols; ++x)
+                {
+                    line[x].ch = ' ';
+                    line[x].underline = false;
+                    line[x].reverse   = false;
+                    line[x].blink     = false;
+                    line[x].bold      = false;
+                    line[x].charset   = g[0];
+                }
+            }
             break;
 
         case KB_4:
@@ -361,7 +328,24 @@ void VT102::keyboard_input(Key key, unsigned int mod)
             break;
 
         case KB_0:
-            /* TODO: reset */
+            /* reset */
+            setup = user_setup;
+
+            /* characters displayed before entering SETUP are lost */
+            for (Line &line : saved_screen)
+            {
+                for (ssize_t x = 0; x < cols; ++x)
+                {
+                    line[x].ch = ' ';
+                    line[x].underline = false;
+                    line[x].reverse   = false;
+                    line[x].blink     = false;
+                    line[x].bold      = false;
+                    line[x].charset   = g[0];
+                }
+            }
+
+            exit_setup();
             break;
 
         case Up:
@@ -417,6 +401,7 @@ void VT102::keyboard_input(Key key, unsigned int mod)
             if (state == State::SetUpB && (mod & Shift))
             {
                 state = State::CreateAnswerback;
+                memset(answerback, 0, 20);
             }
             break;
 
@@ -433,7 +418,7 @@ void VT102::keyboard_input(Key key, unsigned int mod)
             /* reset features to default */
             if (mod & Shift)
             {
-                setup_defaults();
+                setup = Setup();
             }
             break;
 
@@ -493,7 +478,7 @@ void VT102::keyboard_input(Key key, unsigned int mod)
             /* other keys are ignored */
             break;
         }
-        if (key != SetUp)
+        if (key != SetUp && key != KB_0)
         {
             ssize_t x = curs_x,
                     y = curs_y;
@@ -536,7 +521,10 @@ void VT102::keyboard_input(Key key, unsigned int mod)
           } break;
 
         case Break:
-            /* TODO: */
+            if (mod & Ctrl)
+            {
+                output(std::string(answerback, 20));
+            }
             break;
 
         case Return:
@@ -652,18 +640,18 @@ void VT102::keyboard_input(Key key, unsigned int mod)
 
         default:
           {
-            int idx = 0;
-            if (mod & (Shift | CapsLock))
+            bool err = false;
+            char out = 0;
+            try
             {
-                idx = 1;
+                out = getkey(key, mod);
             }
-            /* IMPORTANT: CTRL overrides SHIFT! */
-            if (mod & Ctrl)
+            catch (std::invalid_argument &e)
             {
-                idx = 2;
+                err = true;
             }
-            char out = keymap.at(key).at(idx);
-            if (out != -1)
+
+            if (!err)
             {
                 output(std::string(1, out));
             }
@@ -2320,51 +2308,112 @@ void VT102::display_setup(void)
     }
 }
 
-void VT102::setup_defaults(void)
-{
-    /* general */
-    setup.online = true;
-    setup.block_cursor = true;
-    setup.margin_bell = false;
-    setup.keyclick = true;
-    setup.auto_XON_XOFF = true;
-    setup.UK_charset = false;
-    setup.stop_bits = false;
-    setup.receive_parity = true;
-    setup.break_enable = true;
-    setup.disconn_char_enable = false;
-    setup.disconn_delay = true;
-    setup.auto_answerback = false;
-    setup.initial_direction = true;
-    setup.auto_turnaround = false;
-    setup.power = true;
-    setup.wps_terminal_kbd = false;
-    setup.delimiter = -1;
-    setup.answerback_idx = 0;
-    setup.brightness = 1.0;
-    setup.tab_stops = std::array<bool, 132>();
-    for (size_t x = 0; x < setup.tab_stops.size(); ++x)
-    {
-        setup.tab_stops[x] = (x != 0 && x % 8 == 0);
-    }
-
-    /* modem */
-    setup.modem.data_parity_bits = 1;
-    setup.modem.tx_speed = 14;
-    setup.modem.rx_speed = 14;
-    setup.modem.control = 0;
-    setup.modem.turnaround_disconn_char = 0;
-
-    /* printer */
-    setup.printer.data_parity_bits = 1;
-    setup.printer.tx_rx_speed = 6;
-}
-
 void VT102::exit_setup(void)
 {
     state = saved_state;
     screen = saved_screen;
+    curs_x = 0;
+    curs_y = 0;
 }
+
+char VT102::getkey(Key key, unsigned int mod) const
+{
+    std::unordered_map<Key, std::array<int, 3>> const keymap =\
+    {
+        /* key
+         *                 unshifted
+         *                 |    shifted
+         *                 |    |    ctrl
+         *                 |    |    |
+         *                 v    v    v */
+        { Escape,       { 033, 033,  -1 } },
+
+        { KB_1,         { '1', '!',  -1 } },
+        { KB_2,         { '2', '@',  -1 } },
+        { KB_3,         { '3', '#',  -1 } },
+        { KB_4,         { '4', '$',  -1 } },
+        { KB_5,         { '5', '%',  -1 } },
+        { KB_6,         { '6', '^',  -1 } },
+        { KB_7,         { '7', '&',  -1 } },
+        { KB_8,         { '8', '*',  -1 } },
+        { KB_9,         { '9', '(',  -1 } },
+        { KB_0,         { '0', ')',  -1 } },
+        { Minus,        { '-', '_',  -1 } },
+        { Equals,       { '=', '+',  -1 } },
+        { Backtick,     { '`', '~', 036 } },
+        { Backspace,    {'\b','\b',  -1 } },
+
+        { Tab,          {'\t','\t',  -1 } },
+        { KB_Q,         { 'q', 'Q', 021 } },
+        { KB_W,         { 'w', 'W', 027 } },
+        { KB_E,         { 'e', 'E', 005 } },
+        { KB_R,         { 'r', 'R', 022 } },
+        { KB_T,         { 't', 'T', 024 } },
+        { KB_Y,         { 'y', 'Y', 031 } },
+        { KB_U,         { 'u', 'U', 025 } },
+        { KB_I,         { 'i', 'I', 011 } },
+        { KB_O,         { 'o', 'O', 017 } },
+        { KB_P,         { 'p', 'P', 020 } },
+        { LeftBracket,  { '[', '{', 033 } },
+        { RightBracket, { ']', '}', 035 } },
+        { Delete,       {0177,0177,  -1 } },
+
+        { KB_A,         { 'a', 'A', 001 } },
+        { KB_S,         { 's', 'S', 023 } },
+        { KB_D,         { 'd', 'D', 004 } },
+        { KB_F,         { 'f', 'F', 006 } },
+        { KB_G,         { 'g', 'G', 007 } },
+        { KB_H,         { 'h', 'H', 010 } },
+        { KB_J,         { 'j', 'J', 012 } },
+        { KB_K,         { 'k', 'K', 013 } },
+        { KB_L,         { 'l', 'L', 014 } },
+        { Semicolon,    { ';', ':',  -1 } },
+        { Quote,        { '\'','"',  -1 } },
+        { Backslash,    { '\\','|', 034 } },
+
+        { KB_Z,         { 'z', 'Z', 032 } },
+        { KB_X,         { 'x', 'X', 030 } },
+        { KB_C,         { 'c', 'C', 003 } },
+        { KB_V,         { 'v', 'V', 026 } },
+        { KB_B,         { 'b', 'B', 002 } },
+        { KB_N,         { 'n', 'N', 016 } },
+        { KB_M,         { 'm', 'M', 015 } },
+        { Comma,        { ',', '<',  -1 } },
+        { Period,       { '.', '>',  -1 } },
+        { Slash,        { '/', '?', 037 } },
+        { LineFeed,     {'\n','\n',  -1 } },
+
+        { Space,        { ' ', ' ', 000 } },
+    };
+
+    int idx = 0;
+    char ch = 0;
+
+    if (mod & (Shift | CapsLock))
+    {
+        idx = 1;
+    }
+    /* IMPORTANT: CTRL overrides SHIFT! */
+    if (mod & Ctrl)
+    {
+        idx = 2;
+    }
+
+    try
+    {
+        ch = keymap.at(key)[idx];
+    }
+    catch (std::out_of_range &e)
+    {
+        throw std::invalid_argument(
+            "bad key '"
+            + std::to_string(key)
+            + "'");
+    }
+
+    return ch;
+}
+
 
 
 Char VT102::getc_at(ssize_t x, ssize_t y) const
@@ -2692,7 +2741,8 @@ VT102::VT102()
     DECARM(true),
     DECPFF(true),
     DECPEX(true),
-    user_setup({}),
+    setup(),
+    user_setup(),
     modem_features_selected(true),
     scroll_top(0),
     scroll_bottom(rows-1),
@@ -2713,8 +2763,6 @@ VT102::VT102()
         }
         screen.push_back(line);
     }
-
-    setup_defaults();
 }
 
 VT102::~VT102()
@@ -2722,3 +2770,43 @@ VT102::~VT102()
     delete cmd;
 }
 
+
+VT102::Setup::Setup()
+{
+    /* general */
+    online = true;
+    block_cursor = true;
+    margin_bell = false;
+    keyclick = true;
+    auto_XON_XOFF = true;
+    UK_charset = false;
+    stop_bits = false;
+    receive_parity = true;
+    break_enable = true;
+    disconn_char_enable = false;
+    disconn_delay = true;
+    auto_answerback = false;
+    initial_direction = true;
+    auto_turnaround = false;
+    power = true;
+    wps_terminal_kbd = false;
+    delimiter = -1;
+    answerback_idx = 0;
+    brightness = 1.0;
+    tab_stops = std::array<bool, 132>();
+    for (size_t x = 0; x < tab_stops.size(); ++x)
+    {
+        tab_stops[x] = (x != 0 && x % 8 == 0);
+    }
+
+    /* modem */
+    modem.data_parity_bits = 1;
+    modem.tx_speed = 14;
+    modem.rx_speed = 14;
+    modem.control = 0;
+    modem.turnaround_disconn_char = 0;
+
+    /* printer */
+    printer.data_parity_bits = 1;
+    printer.tx_rx_speed = 6;
+}

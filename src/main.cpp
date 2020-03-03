@@ -152,7 +152,6 @@ std::unordered_map<SDL_Keycode, VT102::Key> const keymap =\
 
     { SDLK_KP_0,        VT102::Key::KP_0        },
     { SDLK_KP_PERIOD,   VT102::Key::KP_Period   },
-    /* KP_ENTER is not defined here */
 };
 
 Uint8 colour_red = 255,
@@ -483,6 +482,9 @@ int main (int argc, char *argv[])
     /* fork() parent */
     VT102 term{};
 
+    /* TODO: load rc file into term.user_setup */
+
+
     /* init SDL2 */
     err = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
     if (err < 0)
@@ -618,10 +620,7 @@ int main (int argc, char *argv[])
                         ch.blink = true;
                         if (term.setup.block_cursor)
                         {
-                            if (!blink_off)
-                            {
-                                ch.reverse = !ch.reverse;
-                            }
+                            ch.reverse = !ch.reverse;
                         }
                         else
                         {

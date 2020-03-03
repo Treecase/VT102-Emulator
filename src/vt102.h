@@ -238,7 +238,7 @@ public:
          DECPFF,    /* print form feed off/on */
          DECPEX;    /* print full screen/scroll region */
 
-    struct
+    struct Setup
     {
         bool online,
              block_cursor,
@@ -274,6 +274,8 @@ public:
             int data_parity_bits,
                 tx_rx_speed;
         } printer;
+
+        Setup();
     } setup,
       user_setup;
     bool modem_features_selected;
@@ -312,8 +314,9 @@ public:
 
     void enter_setup(void);
     void display_setup(void);
-    void setup_defaults(void);
     void exit_setup(void);
+
+    char getkey(Key key, unsigned int mod) const;
 
 
     /* get the character at the given x,y coords */
