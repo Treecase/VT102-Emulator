@@ -418,7 +418,7 @@ void VT102::keyboard_input(Key key, unsigned int mod)
             /* reset features to default */
             if (mod & Shift)
             {
-                setup = Setup();
+                setup = Setup(cols);
             }
             break;
 
@@ -1666,7 +1666,10 @@ void VT102::interpret_byte_ctrlseq(uint8_t ch)
                             TRACE("%cM DECCOLM",
                                 ch == 'h'? 'S' : 'R');
                             DECCOLM = setting;
-                            cols = setting? 132 : 80;
+                            if (cols < (setting? 132 : 80))
+                            {
+                                resize(setting? 132 : 80, rows);
+                            }
                             /* when the columns per line is changed,
                              * the screen is erased */
                             for (ssize_t y = 0; y < rows; ++y)
@@ -2414,6 +2417,72 @@ char VT102::getkey(Key key, unsigned int mod) const
     return ch;
 }
 
+void VT102::resize(ssize_t i_cols, ssize_t i_rows)
+{
+    cols = i_cols;
+    rows = i_rows;
+
+    std::vector<bool> newstops;
+    for (bool stop : setup.tab_stops)
+    {
+        newstops.push_back(stop);
+    }
+    for (size_t i = 0; i < cols - setup.tab_stops.size(); ++i)
+    {
+        if (i < setup.tab_stops.size())
+        {
+            newstops.push_back(setup.tab_stops[i]);
+        }
+        else
+        {
+            newstops.push_back(i != 0 && i % 8 == 0);
+        }
+    }
+    setup.tab_stops = newstops;
+
+    std::vector<Line> newscreen;
+    for (ssize_t y = 0; y < i_rows; ++y)
+    {
+        Line line{Line::NORMAL, std::vector<Char>()};
+        for (ssize_t x = 0; x < i_cols; ++x)
+        {
+            if (   y < (ssize_t)screen.size()
+                && x < (ssize_t)screen[y].chars.size())
+            {
+                line.chars.push_back(screen[y].chars[x]);
+            }
+            else
+            {
+                line.chars.push_back(
+                    (Char){' ', false, false, false, false, g[0]});
+            }
+        }
+        newscreen.push_back(line);
+    }
+    screen = newscreen;
+
+    std::vector<Line> newsaved;
+    for (ssize_t y = 0; y < i_rows; ++y)
+    {
+        Line line{Line::NORMAL, std::vector<Char>()};
+        for (ssize_t x = 0; x < i_cols; ++x)
+        {
+            if (   y < (ssize_t)saved_screen.size()
+                && x < (ssize_t)saved_screen[y].chars.size())
+            {
+                line.chars.push_back(saved_screen[y].chars[x]);
+            }
+            else
+            {
+                line.chars.push_back(
+                    (Char){' ', false, false, false, false, g[0]});
+            }
+        }
+        newsaved.push_back(line);
+    }
+    saved_screen = newsaved;
+}
+
 
 
 Char VT102::getc_at(ssize_t x, ssize_t y) const
@@ -2427,7 +2496,7 @@ Char VT102::getc_at(ssize_t x, ssize_t y) const
     }
     else
     {
-        return screen[y][x];
+        return screen[y].chars[x];
     }
 }
 
@@ -2622,7 +2691,7 @@ void VT102::putc(unsigned char ch)
         }
         else
         {
-            move_curs(curs_x + 1, curs_y);
+            curs_x += 1;
         }
     }
 }
@@ -2741,8 +2810,8 @@ VT102::VT102()
     DECARM(true),
     DECPFF(true),
     DECPEX(true),
-    setup(),
-    user_setup(),
+    setup(cols),
+    user_setup(cols),
     modem_features_selected(true),
     scroll_top(0),
     scroll_bottom(rows-1),
@@ -2756,7 +2825,7 @@ VT102::VT102()
     for (ssize_t y = 0; y < rows; ++y)
     {
         Line line{Line::NORMAL, std::vector<Char>()};
-        for (ssize_t x = 0; x < 132; ++x)
+        for (ssize_t x = 0; x < cols; ++x)
         {
             line.chars.push_back(
                 (Char){' ', false, false, false, false, g[0]});
@@ -2771,7 +2840,7 @@ VT102::~VT102()
 }
 
 
-VT102::Setup::Setup()
+VT102::Setup::Setup(ssize_t cols)
 {
     /* general */
     online = true;
@@ -2793,10 +2862,11 @@ VT102::Setup::Setup()
     delimiter = -1;
     answerback_idx = 0;
     brightness = 1.0;
-    tab_stops = std::array<bool, 132>();
-    for (size_t x = 0; x < tab_stops.size(); ++x)
+
+    tab_stops = std::vector<bool>();
+    for (ssize_t x = 0; x < cols; ++x)
     {
-        tab_stops[x] = (x != 0 && x % 8 == 0);
+        tab_stops.push_back(x != 0 && x % 8 == 0);
     }
 
     /* modem */
@@ -2810,3 +2880,4 @@ VT102::Setup::Setup()
     printer.data_parity_bits = 1;
     printer.tx_rx_speed = 6;
 }
+

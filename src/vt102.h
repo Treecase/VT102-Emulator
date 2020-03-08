@@ -259,7 +259,7 @@ public:
         int delimiter,
             answerback_idx;
         double brightness;
-        std::array<bool, 132> tab_stops;
+        std::vector<bool> tab_stops;
 
         struct
         {
@@ -275,7 +275,7 @@ public:
                 tx_rx_speed;
         } printer;
 
-        Setup();
+        Setup(ssize_t);
     } setup,
       user_setup;
     bool modem_features_selected;
@@ -317,6 +317,7 @@ public:
     void exit_setup(void);
 
     char getkey(Key key, unsigned int mod) const;
+    void resize(ssize_t cols, ssize_t rows);
 
 
     /* get the character at the given x,y coords */

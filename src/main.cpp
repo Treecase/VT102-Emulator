@@ -154,9 +154,12 @@ std::unordered_map<SDL_Keycode, VT102::Key> const keymap =\
     { SDLK_KP_PERIOD,   VT102::Key::KP_Period   },
 };
 
-Uint8 colour_red = 255,
-      colour_grn = 255,
-      colour_blu = 255;
+Uint8 colour_bold_red = 255,
+      colour_bold_grn = 255,
+      colour_bold_blu = 255;
+Uint8 colour_red = colour_bold_red * 0.75,
+      colour_grn = colour_bold_grn * 0.75,
+      colour_blu = colour_bold_blu * 0.75;
 
 
 
@@ -314,11 +317,11 @@ std::unique_ptr<SDL_Color[]> get_palette(
         (SDL_Color)
         {
             .r = (Uint8)(
-                (bold? colour_red : colour_red * 0.75) * brightness),
+                (bold? colour_bold_red : colour_red) * brightness),
             .g = (Uint8)(
-                (bold? colour_grn : colour_grn * 0.75) * brightness),
+                (bold? colour_bold_grn : colour_grn) * brightness),
             .b = (Uint8)(
-                (bold? colour_blu : colour_blu * 0.75) * brightness),
+                (bold? colour_bold_blu : colour_blu) * brightness),
             .a = 255
         }
     };
@@ -519,7 +522,7 @@ int main (int argc, char *argv[])
         SDL_WINDOWPOS_UNDEFINED,
         term.cols * fonts[0][0]->w,
         term.rows * fonts[0][0]->h,
-        0/*SDL_WINDOW_RESIZABLE*/);
+        SDL_WINDOW_RESIZABLE);
 
     SDL_Surface *surf = nullptr;
 
@@ -606,7 +609,7 @@ int main (int argc, char *argv[])
                     auto pal = get_palette(
                         term.setup.brightness,
                         term.DECSCNM ^ ch.reverse,
-                        ch.bold);
+                        term.DECSCNM? false : ch.bold);
 
                     SDL_SetPaletteColors(
                         glyph->format->palette,
@@ -674,7 +677,7 @@ int main (int argc, char *argv[])
                         auto rpal = get_palette(
                             term.setup.brightness,
                             term.DECSCNM ^ ch.reverse,
-                            false);
+                            ch.bold);
 
                         /* fill the character area with the foreground
                          * colour, so the glyph is visible */
@@ -683,9 +686,9 @@ int main (int argc, char *argv[])
                             &scr_rect,
                             SDL_MapRGB(
                                 surf->format,
-                                rpal[1].r,
-                                rpal[1].g,
-                                rpal[1].b));
+                                rpal[0].r,
+                                rpal[0].g,
+                                rpal[0].b));
                     }
 
                     /* draw the character */
@@ -728,10 +731,7 @@ int main (int argc, char *argv[])
 
         /* handle events */
         SDL_Event event;
-        if (SDL_WaitEvent(&event) == 0)
-        {
-            done = true;
-        }
+        done = (SDL_WaitEvent(&event) == 0);
         switch (event.type)
         {
         case SDL_QUIT:
@@ -739,18 +739,44 @@ int main (int argc, char *argv[])
             break;
 
         case SDL_WINDOWEVENT:
-            switch (event.window.type)
+            switch (event.window.event)
             {
-            case SDL_WINDOWEVENT_SHOWN:
             case SDL_WINDOWEVENT_EXPOSED:
-            case SDL_WINDOWEVENT_RESIZED:
-            case SDL_WINDOWEVENT_MAXIMIZED:
-            case SDL_WINDOWEVENT_RESTORED:
                 update_screen = true;
                 break;
 
+            case SDL_WINDOWEVENT_RESIZED:
+              {
+                surf = SDL_GetWindowSurface(win);
+
+                SurfaceFont fnt =\
+                    get_font(FontType::Normal, term.DECCOLM);
+                int cols = event.window.data1 / fnt[0]->w;
+                int rows = event.window.data2 / fnt[0]->h;
+
+                term.resize(cols, rows);
+
+
+                int slave = open(slave_filename, O_RDWR);
+                if (slave == -1)
+                {
+                    perror("open(slave)");
+                    exit(EXIT_FAILURE);
+                }
+                struct winsize _winsize;
+                _winsize.ws_col = cols;
+                _winsize.ws_row = rows;
+                if (ioctl(slave, TIOCSWINSZ, &_winsize) == -1)
+                {
+                    perror("ioctl(TIOCSWINSZ)");
+                    exit(EXIT_FAILURE);
+                }
+                close(slave);
+              } break;
+
             case SDL_WINDOWEVENT_MOVED:
-                puts("moved");
+                update_screen = true;
+                surf = SDL_GetWindowSurface(win);
                 break;
             }
             break;
@@ -831,6 +857,7 @@ int main (int argc, char *argv[])
         /* write any data from the terminal to the child */
         if (term.outbuffer.size() != 0)
         {
+#if 0
             printf("outbuffer '");
             for (char ch : term.outbuffer)
             {
@@ -844,6 +871,7 @@ int main (int argc, char *argv[])
                 }
             }
             printf("'\n");
+#endif
             write_to(master, term.outbuffer);
             term.outbuffer.erase();
         }
